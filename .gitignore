@@ -1,0 +1,42 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.test/
+.stress/
+
+# Local runtime state and test state
+logs/
+.ui-evidence/
+.smoke-*/
+*.log
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+.npmrc
+
+# Local packaging artifacts
+*.tgz
+*.tar.gz
+
+# Editors and macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+.idea/
+.vscode/
+*.swp
+*~
+
+# Temporary maintenance files
+.tmp*
+.patch*
+.public_patch*
+.scenario*
+.app-*
+.sdk-*
+.tsc-*
+.readme-new.md
+.add_review_bundle.py
