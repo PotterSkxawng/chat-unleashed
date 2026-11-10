@@ -58,6 +58,7 @@ local-mac                 # the same tool under its alias
 | `chat-unleashed setup` | Walks client, tunnel ID, runtime key, profile, server build and services. It creates a tunnel profile pointed at this server, keeps the key by reference, writes only what is missing, then waits for both services. `--check` prints the plan and writes nothing. |
 | `chat-unleashed connect` | Prints the ChatGPT steps with your tunnel ID. `--open` opens the tunnel, key and connector pages. |
 | `chat-unleashed doctor` | Four groups of checks with the failing detail and the exact fix under each failure. Exits 1 when something is broken, so it works in scripts. |
+| `chat-unleashed update` | Checks GitHub for updates, pulls new commits, recompiles bundle, redeploys runtime, and restarts services. Use `--check` to inspect without applying, or `--force` to force rebuild. |
 | `chat-unleashed status` | One line, or the full state with `--json`. |
 | `chat-unleashed start` / `stop` / `restart` | Loads the launchd jobs, starts them, and waits for readiness. |
 | `chat-unleashed logs [server\|tunnel\|launchd]` | Follows the matching log. |

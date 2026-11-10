@@ -1327,6 +1327,203 @@ function statusLine() {
 // ============================================================================
 // Help / Command Palette Screen
 // ============================================================================
+// ============================================================================
+// Update Command (Pull upstream, Recompile, Deploy & Restart)
+// ============================================================================
+async function updateCommand() {
+  const isCheckOnly = flags.has('--check')
+  const isForce = flags.has('--force')
+  const isStage = flags.has('--stage')
+  const isStatus = flags.has('--status')
+  const isCancel = flags.has('--cancel')
+  const width = columns()
+
+  renderBanner()
+
+  // Deferred update sub-actions
+  if (isStatus) {
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'status'], {
+      encoding: 'utf8',
+      cwd: PKG_ROOT,
+      timeout: 10000
+    })
+    const output = (res.stdout || res.stderr || '').trim()
+    card(appleCyan(bold('DEFERRED UPDATE STATUS')), 'STAGE', [
+      output || 'No deferred update currently pending.'
+    ], width)
+    gap()
+    return res.status === 0 ? 0 : 1
+  }
+
+  if (isCancel) {
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'cancel'], {
+      encoding: 'utf8',
+      cwd: PKG_ROOT,
+      timeout: 10000
+    })
+    const output = (res.stdout || res.stderr || '').trim()
+    card(appleOrange(bold('DEFERRED UPDATE CANCELLED')), 'CANCEL', [
+      output || 'Cancelled any pending deferred update.'
+    ], width)
+    gap()
+    return 0
+  }
+
+  if (isStage) {
+    line(`  ${appleCyan('●')} ${textSecondary('Compiling and staging candidate bundle for deferred update...')}`)
+    const build = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
+    if (build.status !== 0) {
+      line(`  ${appleRed('✗')} ${textSecondary('Build failed. Fix errors above before staging.')}`)
+      return 1
+    }
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'stage'], {
+      encoding: 'utf8',
+      cwd: PKG_ROOT,
+      timeout: 15000
+    })
+    const output = (res.stdout || res.stderr || '').trim()
+    card(appleGreen(bold('UPDATE STAGED (DEFERRED)')), 'STAGED', [
+      textSecondary(output || 'Bundle staged. Will automatically switch after 20 minutes of no tool activity.'),
+      '',
+      `Check status with: ${codeSnippet('chat-unleashed update --status')}`
+    ], width)
+    gap()
+    return res.status === 0 ? 0 : 1
+  }
+
+  // Standard git-based update
+  const isGit = existsSync(join(PKG_ROOT, '.git'))
+  if (!isGit) {
+    card(appleOrange(bold('GIT REPOSITORY NOT FOUND')), 'MANUAL UPDATE', [
+      textSecondary('This installation was not cloned from a git repository.'),
+      '',
+      `To update manually, run: ${codeSnippet('npm install -g local-agent-mcp@latest')}`
+    ], width, borderWarn)
+    gap()
+    return 1
+  }
+
+  line(`  ${appleBlue(bold('✦ CHECKING FOR UPDATES'))}`)
+  await withSpinner('Fetching latest commits from GitHub', () => {
+    spawnSync('git', ['fetch', 'origin', 'main', '--quiet'], { cwd: PKG_ROOT, encoding: 'utf8', timeout: 20000 })
+  })
+
+  const head = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
+  const remote = (spawnSync('git', ['rev-parse', '--short', 'origin/main'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
+  const behindCount = parseInt((spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '0').trim(), 10) || 0
+
+  if (isCheckOnly) {
+    if (behindCount === 0) {
+      card(appleGreen(bold('✦ CHAT UNLEASHED IS UP TO DATE')), 'LATEST', [
+        `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
+        `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
+        `${textSecondary('Remote Status:   ')}${appleGreen('Synchronized with origin/main')}`,
+        '',
+        textSecondary('No new commits found upstream.')
+      ], width)
+    } else {
+      const commitLog = (spawnSync('git', ['log', 'HEAD..origin/main', '--pretty=format:  • %h %s (%cr)', '-n', '5'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
+      card(appleCyan(bold('✦ UPDATE AVAILABLE')), `${behindCount} NEW`, [
+        `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
+        `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
+        `${textSecondary('Remote Commit:   ')}${appleGreen(remote)} (${behindCount} commit${behindCount > 1 ? 's' : ''} behind)`,
+        '',
+        textWhite('Incoming Changes:'),
+        commitLog,
+        '',
+        `Execute: ${codeSnippet('chat-unleashed update')}`
+      ], width, borderActive)
+    }
+    gap()
+    return 0
+  }
+
+  if (behindCount === 0 && !isForce) {
+    card(appleGreen(bold('✦ CHAT UNLEASHED IS UP TO DATE')), 'LATEST', [
+      `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
+      `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
+      `${textSecondary('Remote Status:   ')}${appleGreen('Synchronized with origin/main')}`,
+      '',
+      textSecondary('You are already running the latest version.'),
+      `To force a rebuild and service redeployment, run: ${codeSnippet('chat-unleashed update --force')}`
+    ], width)
+    gap()
+    return 0
+  }
+
+  // Execute update
+  line(`  ${appleBlue(bold('⚙ EXECUTING CHAT UNLEASHED UPDATE'))}`)
+  gap()
+
+  // Step 1: Pull commits
+  if (behindCount > 0) {
+    line(`  ${appleCyan('[ 1/5 ]')} ${textSecondary('Pulling latest commits from origin/main...')}`)
+    const pull = spawnSync('git', ['pull', 'origin', 'main'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 30000 })
+    if (pull.status !== 0) {
+      line(`  ${appleRed('✗')} ${textSecondary('git pull failed. Resolve merge conflicts before updating.')}`)
+      return 1
+    }
+  } else {
+    line(`  ${appleCyan('[ 1/5 ]')} ${textSecondary(`Already at latest commit (${head}), continuing with force rebuild...`)}`)
+  }
+
+  // Step 2: npm install
+  line(`  ${appleCyan('[ 2/5 ]')} ${textSecondary('Updating npm dependencies...')}`)
+  const install = spawnSync('npm', ['install', '--prefer-offline'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 120000 })
+  if (install.status !== 0) {
+    line(`  ${appleRed('✗')} ${textSecondary('npm install failed. Fix dependency issues and re-run update.')}`)
+    return 1
+  }
+
+  // Step 3: compile bundle
+  line(`  ${appleCyan('[ 3/5 ]')} ${textSecondary('Compiling TypeScript & bundling standalone executable...')}`)
+  const build = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
+  if (build.status !== 0) {
+    line(`  ${appleRed('✗')} ${textSecondary('Build failed. Fix build errors and re-run update.')}`)
+    return 1
+  }
+
+  // Step 4: deploy
+  line(`  ${appleCyan('[ 4/5 ]')} ${textSecondary('Deploying runtime to ~/.local/share/local-agent-mcp...')}`)
+  const deploy = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deploy-local.mjs')], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 60000 })
+  if (deploy.status !== 0) {
+    line(`  ${appleRed('✗')} ${textSecondary('Local deployment failed.')}`)
+    return 1
+  }
+
+  // Step 5: restart & verify
+  line(`  ${appleCyan('[ 5/5 ]')} ${textSecondary('Restarting background daemons and verifying health...')}`)
+  const currentState = await collectState()
+  stopServices(currentState)
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  const fresh = await collectState()
+  ensureJobs(fresh)
+  await bringUp(fresh.jobs, fresh.profile, withSpinner)
+
+  const final = await collectState()
+  const newHead = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
+  gap()
+
+  if (final.server.healthy && final.tunnel.ready) {
+    card(appleGreen(bold(' UPDATE COMPLETE & SERVICES ONLINE')), 'SUCCESS', [
+      `${textSecondary('Active Version:   ')}${textWhite(DISPLAY_VERSION)}`,
+      `${textSecondary('Deployed Commit:  ')}${textWhite(newHead)}`,
+      `${textSecondary('MCP Server:       ')}${appleGreen(`${final.server.tools ?? '?'} tools online`)} ${textSecondary(`at ${hostOf(final.server.url)}`)}`,
+      `${textSecondary('OpenAI Tunnel:    ')}${appleGreen('Connected & ready')}`
+    ], width)
+  } else {
+    card(appleOrange(bold('UPDATE DEPLOYED (CHECK SERVICES)')), 'ATTENTION', [
+      `${textSecondary('Deployed Commit:  ')}${textWhite(newHead)}`,
+      `${textSecondary('Server status:    ')}${final.server.healthy ? appleGreen('online') : appleRed('offline')}`,
+      `${textSecondary('Tunnel status:    ')}${final.tunnel.ready ? appleGreen('ready') : appleRed(trimTo(final.tunnel.body, 30))}`,
+      '',
+      `Run ${codeSnippet('chat-unleashed doctor')} to inspect the service status.`
+    ], width, borderWarn)
+  }
+  gap()
+  return 0
+}
+
 function help() {
   const width = columns()
   renderBanner()
@@ -1341,6 +1538,7 @@ function help() {
       `  ${appleBlue(padEnd('setup', 18))}${textSecondary('Interactive setup wizard (client, profile, key, jobs)')}`,
       `  ${appleBlue(padEnd('connect', 18))}${textSecondary('Display exact form values to paste into ChatGPT')}`,
       `  ${appleBlue(padEnd('doctor', 18))}${textSecondary('Run complete diagnostic health checks on all systems')}`,
+      `  ${appleBlue(padEnd('update', 18))}${textSecondary('Check for updates, pull changes, recompile & restart')}`,
       `  ${appleBlue(padEnd('(none)', 18))}${textSecondary('Open the visual dashboard and status summary')}`,
       '',
       textWhite('SERVICE MANAGEMENT:'),
@@ -1360,7 +1558,9 @@ function help() {
     [
       `  ${textWhite(padEnd('--profile <name>', 20))}${textSecondary('Select tunnel profile (default: local-mac)')}`,
       `  ${textWhite(padEnd('--json', 20))}${textSecondary('Format output as machine-readable JSON')}`,
-      `  ${textWhite(padEnd('--check', 20))}${textSecondary('Dry-run for setup: inspect without modifying Mac')}`,
+      `  ${textWhite(padEnd('--check', 20))}${textSecondary('Check for updates or dry-run setup without changes')}`,
+      `  ${textWhite(padEnd('--force', 20))}${textSecondary('With update: force rebuild, redeploy and restart')}`,
+      `  ${textWhite(padEnd('--stage', 20))}${textSecondary('With update: stage bundle for deferred quiet update')}`,
       `  ${textWhite(padEnd('--yes', 20))}${textSecondary('Automatically accept prompts in setup')}`,
       `  ${textWhite(padEnd('--no-color', 20))}${textSecondary('Disable ANSI colors and box decorations')}`,
       `  ${textWhite(padEnd('--verbose', 20))}${textSecondary('Display timing and probe diagnostics')}`
@@ -1386,6 +1586,8 @@ async function main() {
       return connectCommand()
     case 'doctor':
       return doctor()
+    case 'update':
+      return updateCommand()
     case 'status':
       return statusLine()
     case 'start':

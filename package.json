@@ -17,6 +17,7 @@
     "deploy:local": "node scripts/deploy-local.mjs",
     "start": "node dist/index.js",
     "unleashed": "node cli/chat-unleashed.mjs",
+    "update": "node cli/chat-unleashed.mjs update",
     "stdio": "node dist/index.js --stdio",
     "http": "node dist/index.js --http --port 3344",
     "smoke": "node scripts/smoke.mjs",
