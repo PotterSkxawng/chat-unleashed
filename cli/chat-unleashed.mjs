@@ -33,6 +33,10 @@ const CODEX_PLUGIN = join(HOME, '.codex/plugins/cache/debug/tunnel-mcp/local')
 const DEFAULT_PROFILE = 'local-mac'
 const MCP_URL_FALLBACK = 'http://127.0.0.1:3344/mcp'
 const HEALTH_URL_FALLBACK = 'http://127.0.0.1:8080'
+const TUNNELS_URL = 'https://platform.openai.com/settings/organization/tunnels'
+const KEYS_URL = 'https://platform.openai.com/settings/organization/api-keys'
+const CONNECTORS_URL = 'https://chatgpt.com/#settings/Connectors'
+const TUNNEL_ID_RE = /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/
 
 const argv = process.argv.slice(2)
 const named = new Map()
@@ -364,13 +368,10 @@ function nextStep(state) {
   if (!tunnel.ready) {
     return { command: 'chat-unleashed restart', note: `The tunnel answers "${trimTo(tunnel.body, 40)}" instead of ready.` }
   }
-  if (!agent.installed) {
-    return {
-      command: 'tunnel-client codex plugin install',
-      note: 'Optional. Then add the connector Chat Unleashed, alias local mac, in ChatGPT under Settings, Connectors.'
-    }
+  return {
+    command: 'chat-unleashed connect',
+    note: 'Both services answer. Add Chat Unleashed in ChatGPT, then ask it to do something local.'
   }
-  return { command: null, note: 'Everything is talking to everything.' }
 }
 
 function renderDashboard(state) {
@@ -690,6 +691,39 @@ function writeTunnelIdToProfile(path, id) {
   return true
 }
 
+function tunnelIdProblem(value) {
+  return TUNNEL_ID_RE.test(value)
+    ? null
+    : 'tunnel-client expects tunnel_ then 32 lowercase letters or digits, optionally with a 4 character namespace.'
+}
+
+function sanitizeKey(value) {
+  const key = String(value || '').trim()
+  if (!key) return { key: '', problem: 'No key entered. Run chat-unleashed setup when you have it.' }
+  if (!/^[A-Za-z0-9._-]+$/.test(key)) {
+    return { key: '', problem: 'That does not look like a key. Paste it without quotes, spaces or line breaks.' }
+  }
+  return { key, problem: null }
+}
+
+// The tunnel carries a loopback HTTP target, never a stdio child, so the
+// profile always names this server's MCP endpoint and keeps the key by reference.
+function ensureProfile(tunnelId) {
+  const clientPath = which('tunnel-client')
+  if (!clientPath) return { ok: false, output: 'tunnel-client is not installed.' }
+  const result = spawnSync(clientPath, [
+    'init',
+    '--sample', 'sample_mcp_with_dcr',
+    '--profile', PROFILE,
+    '--tunnel-id', tunnelId,
+    '--mcp-server-url', MCP_URL_FALLBACK,
+    '--health-listen-addr', HEALTH_URL_FALLBACK.replace('http://', ''),
+    '--control-plane-api-key-ref', 'env:CONTROL_PLANE_API_KEY',
+    '--force'
+  ], { encoding: 'utf8', timeout: 30000 })
+  return { ok: result.status === 0, output: `${result.stdout || ''}${result.stderr || ''}`.trim() }
+}
+
 function ask(question, { fallback = '', validate } = {}) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
@@ -757,7 +791,7 @@ async function setup() {
   const dryRun = flags.has('--check')
   const assumeYes = flags.has('--yes')
   line(`  ${bold('chat')}${dim('-')}${bold('unleashed')}  ${sub('setup')}`)
-  note('Six steps. Each one is skipped when it is already true.')
+  note('From nothing to a connector ChatGPT can call. Every step is skipped when it is already true.')
   if (dryRun) hint('Dry run. Nothing will be written.')
 
   const state = await withSpinner('Looking around', collectState)
@@ -771,11 +805,11 @@ async function setup() {
   step('Client', state.client.installed,
     state.client.installed ? `tunnel-client ${state.client.version || ''}`.trim() : 'needs Homebrew install')
   step('Profile', state.profile.exists,
-    state.profile.exists ? displayPath(state.profile.path) : 'will be created')
+    state.profile.exists ? displayPath(state.profile.path) : 'will be created for this server')
   step('Tunnel ID', Boolean(state.profile.tunnelId),
-    state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'needs the ID from the Tunnels page')
+    state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'from the Tunnels page')
   step('Runtime key', state.key.present,
-    state.key.present ? `loaded from ${state.key.source}` : 'needs the key from the API keys page')
+    state.key.present ? `loaded from ${state.key.source}` : 'from the API keys page')
   step('MCP server', state.dist.exists,
     state.dist.exists ? displayPath(state.dist.path) : 'will be built')
   step('Services', Boolean(state.server.healthy && state.tunnel.ready),
@@ -785,14 +819,15 @@ async function setup() {
   if (needed === 0) {
     section('Ready')
     note('Nothing to change. The server and the tunnel are both answering.')
-    await offerAgentStep(state)
+    connectorGuide(state)
     gap()
     return 0
   }
   if (dryRun) {
     section('Plan')
     note(`${needed} step${needed > 1 ? 's' : ''} would change this Mac.`)
-    hint(`Run chat-unleashed setup to apply ${needed > 1 ? 'them' : 'it'}.`)
+    note('Then you add the tunnel in ChatGPT once; chat-unleashed connect prints that part.')
+    hint('Run chat-unleashed setup to apply the changes.')
     gap()
     return 0
   }
@@ -818,48 +853,68 @@ async function setup() {
     }
   }
 
-  if (!state.profile.exists) {
-    section('Profile')
-    const initialized = spawnSync(state.client.path, ['init', '--sample', 'sample_mcp_stdio_local', '--profile', PROFILE], {
-      encoding: 'utf8',
-      timeout: 30000
-    })
-    if (initialized.status !== 0) {
-      note((initialized.stderr || initialized.stdout || 'The profile could not be created.').trim())
+  let tunnelId = state.profile.tunnelId
+  if (!tunnelId) {
+    section('Tunnel')
+    note('ChatGPT cannot reach a loopback server, so it goes through an OpenAI tunnel.')
+    note('Create one, then copy the ID it shows.')
+    hint(TUNNELS_URL)
+    if (!process.stdin.isTTY) {
+      note('No terminal to ask in. Create the tunnel, then run chat-unleashed setup in a terminal.')
       return 1
     }
-    note(`Created ${displayPath(join(CLIENT_CONFIG, `${PROFILE}.yaml`))}.`)
-  }
-
-  if (!state.profile.tunnelId && process.stdin.isTTY) {
-    section('Tunnel ID')
-    const id = await ask('Paste the tunnel ID', {
-      validate: (value) => (/^tunnel_[A-Za-z0-9]+$/.test(value) ? null : 'A tunnel ID starts with tunnel_ and has no spaces.')
+    tunnelId = await ask('Tunnel ID', {
+      validate: (value) => (TUNNEL_ID_RE.test(value) ? null : tunnelIdProblem(value))
     })
-    if (!writeTunnelIdToProfile(state.profile.path, id)) {
-      note('The profile could not be updated. Edit it by hand, then run chat-unleashed doctor.')
-      return 1
-    }
-    note('Saved to the profile.')
   }
 
   if (!state.key.present) {
     section('Runtime key')
-    let key = process.env.CONTROL_PLANE_API_KEY || ''
-    if (!key) {
-      if (!process.stdin.isTTY) {
-        note('No terminal to ask in. Export CONTROL_PLANE_API_KEY, then run chat-unleashed setup again.')
-        return 1
-      }
-      note('Input stays hidden. It is written to ~/.local/share/local-agent-mcp/.env.tunnel with mode 600.')
-      key = await askSecret('Runtime API key')
-    }
-    if (!key) {
-      note('No key entered. Run chat-unleashed setup when you have it.')
+    note('Create a runtime API key with Tunnels Read and Use, then paste it here once.')
+    hint(KEYS_URL)
+    if (!process.stdin.isTTY) {
+      note('No terminal to ask in. Export CONTROL_PLANE_API_KEY, then run chat-unleashed setup again.')
       return 1
     }
-    writeKeyToEnvFile(key)
+    note('Input is hidden. It is stored in .env.tunnel with mode 600 and never printed.')
+    const entered = sanitizeKey(await askSecret('Runtime API key'))
+    if (entered.problem) {
+      note(entered.problem)
+      return 1
+    }
+    writeKeyToEnvFile(entered.key)
     note('Stored. The profile keeps the variable name, not the value.')
+  } else if (state.key.source === 'the environment' && !existsSync(ENV_FILE)) {
+    writeKeyToEnvFile(process.env.CONTROL_PLANE_API_KEY)
+    note('Copied the key from the environment into .env.tunnel so the launchd job can read it.')
+  }
+
+  section('Profile')
+  const profilePath = join(CLIENT_CONFIG, `${PROFILE}.yaml`)
+  const wrongTarget = state.profile.exists && state.profile.serverUrl !== MCP_URL_FALLBACK
+  if (!state.profile.exists || wrongTarget) {
+    const result = ensureProfile(tunnelId)
+    if (!result.ok) {
+      note('tunnel-client could not write the profile.')
+      hint((result.output.split('\n')[0] || 'Run tunnel-client init by hand, then chat-unleashed setup again.').trim())
+      return 1
+    }
+    note(`Wrote ${displayPath(profilePath)} for ${MCP_URL_FALLBACK}.`)
+  } else if (!state.profile.tunnelId && tunnelId) {
+    writeTunnelIdToProfile(profilePath, tunnelId)
+    note('Added the tunnel ID to the existing profile.')
+  }
+
+  section('Credentials')
+  const check = spawnSync(which('tunnel-client') || 'tunnel-client', ['doctor', '--profile', PROFILE], {
+    encoding: 'utf8',
+    timeout: 30000
+  })
+  if (check.status === 0) {
+    note('tunnel-client accepts the profile and the key.')
+  } else {
+    note('tunnel-client did not validate the key yet.')
+    hint('The services will still start. If the tunnel never becomes ready, recheck the key and its Tunnels permissions.')
   }
 
   if (!state.dist.exists) {
@@ -880,7 +935,8 @@ async function setup() {
   }
 
   section('Services')
-  const jobs = ensureJobs(state)
+  const current = await collectState()
+  const jobs = ensureJobs(current)
   for (const path of jobs.created) note(`Wrote ${displayPath(path)}.`)
   if (jobs.error) {
     note(jobs.error)
@@ -898,17 +954,50 @@ async function setup() {
     return 1
   }
   row('Ready', `${final.server.tools ?? '?'} tools ${faint('·')} ${hostOf(final.server.url)} ${faint('·')} tunnel ready`, 'ok')
-  await offerAgentStep(final)
+  connectorGuide(final)
   gap()
   return 0
 }
 
-async function offerAgentStep(state) {
-  if (state.agent.installed) return
-  section('Agent')
-  note('Optional: install the Codex plugin so Codex finds the tunnel without copying IDs.')
-  line(`  ${accent('›')} ${action('tunnel-client codex plugin install')}`)
-  hint('Then add the tunnel in ChatGPT under Settings, Connectors.')
+function connectorGuide(state) {
+  section('ChatGPT')
+  if (state?.profile?.tunnelId) {
+    line(`  ${sub(padEnd('Tunnel ID', 16))}${bold(state.profile.tunnelId)}`)
+    hint('Paste this ID into the connector screen.')
+  }
+  note('1. Open chatgpt.com on the web and sign in.')
+  note('2. Settings, Security and login, turn on Developer mode.')
+  note('3. Settings, Connectors (or Plugins), Add custom MCP server.')
+  note('4. Name it Chat Unleashed, choose Tunnel, paste the ID above, save.')
+  note('5. Start a new chat, select the app from the composer, and ask for something local.')
+  hint('The first write asks for approval. Remember applies to that conversation only.')
+  gap()
+  note(`Tunnels  ${TUNNELS_URL}`)
+  note(`Keys     ${KEYS_URL}`)
+  note(`ChatGPT  ${CONNECTORS_URL}`)
+  gap()
+  note('Full write access is documented for Business, Enterprise and Edu. Pro is documented as read and fetch only, so check which tools your connector shows.')
+  hint('Agent mode does not use custom apps. Use a normal chat with the app selected.')
+}
+
+async function connectCommand() {
+  const state = await withSpinner('Checking the tunnel', collectState)
+  if (!state.profile.exists || !state.profile.tunnelId || !state.key.present) {
+    note('The tunnel is not configured yet.')
+    hint('Run chat-unleashed setup first.')
+    gap()
+    return 1
+  }
+  if (flags.has('--open')) {
+    for (const url of [TUNNELS_URL, KEYS_URL, CONNECTORS_URL]) {
+      spawnSync('open', [url], { timeout: 5000 })
+    }
+    note('Opened the tunnel, key and connector pages in your browser.')
+  }
+  row('Tunnel', state.tunnel.ready ? 'ready' : trimTo(state.tunnel.body, 30), state.tunnel.ready ? 'ok' : 'bad')
+  connectorGuide(state)
+  gap()
+  return state.tunnel.ready ? 0 : 1
 }
 
 function stopServices(state) {
@@ -979,6 +1068,7 @@ function help() {
   const commands = [
     ['(none)', 'Check this Mac and name the next step'],
     ['setup', 'Guided setup, safe to run again at any time'],
+    ['connect', 'Walk through adding the tunnel in ChatGPT'],
     ['doctor', 'Every check, with the fix for each failure'],
     ['status', 'One line for scripts, JSON with --json'],
     ['start', 'Load and start the server and the tunnel'],
@@ -1018,6 +1108,8 @@ async function main() {
     }
     case 'setup':
       return setup()
+    case 'connect':
+      return connectCommand()
     case 'doctor':
       return doctor()
     case 'status':
