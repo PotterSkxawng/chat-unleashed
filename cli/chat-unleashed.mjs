@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //
 //  chat-unleashed: Setup, health, and management for Chat Unleashed MCP Server
-// Designed around Apple Human Interface Guidelines (HIG) & SwiftUI principles.
+// Designed following conventional CLI best practices & human interface standards.
 //
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -21,7 +21,7 @@ const VERSION = (() => {
 })()
 const DISPLAY_VERSION = 'Preview (Beta 1)'
 const HOME = process.env.HOME || homedir()
-const UID = typeof process.getuid === 'function' ? process.getuid() : 501
+const UID = typeof process.getuid === 'function' ? process.getuid() : 502
 
 const SHARE = join(HOME, '.local/share/local-agent-mcp')
 const ENV_FILE = join(SHARE, '.env.tunnel')
@@ -61,88 +61,29 @@ const WANTS_JSON = flags.has('--json')
 const COLOR = !NO_COLOR && !WANTS_JSON && (process.stdout.isTTY || process.env.FORCE_COLOR === '1')
 
 // ============================================================================
-// Apple HIG & SwiftUI Terminal Design System
+// Purposeful Semantic Color System (High Contrast, Zero Visual Clutter)
 // ============================================================================
 const esc = (code) => (text) => (COLOR ? `\u001b[${code}m${text}\u001b[0m` : String(text))
 const bold = (text) => (COLOR ? `\u001b[1m${text}\u001b[22m` : String(text))
 const dim = (text) => (COLOR ? `\u001b[2m${text}\u001b[22m` : String(text))
-const italic = (text) => (COLOR ? `\u001b[3m${text}\u001b[23m` : String(text))
 const underline = (text) => (COLOR ? `\u001b[4m${text}\u001b[24m` : String(text))
 const rgb = (r, g, b) => (text) => (COLOR ? `\u001b[38;2;${r};${g};${b}m${text}\u001b[0m` : String(text))
-const bgRgb = (r, g, b) => (text) => (COLOR ? `\u001b[48;2;${r};${g};${b}m${text}\u001b[0m` : String(text))
 
-// Apple System Palette
-const appleBlue = rgb(10, 132, 255)       // System Blue (primary accent)
-const appleCyan = rgb(100, 210, 255)     // System Cyan (teal/highlight)
-const appleIndigo = rgb(94, 92, 230)     // System Indigo (connectors)
-const applePurple = rgb(191, 90, 242)    // System Purple (beta/special)
-const appleGreen = rgb(48, 209, 88)      // System Green (healthy, active)
-const appleYellow = rgb(255, 214, 10)    // System Yellow (warning)
-const appleOrange = rgb(255, 159, 10)    // System Orange (action required)
-const appleRed = rgb(255, 69, 58)        // System Red (error, offline)
-const appleMint = rgb(99, 230, 226)      // System Mint
-
-// Typography Hierarchy
-const textWhite = (text) => (COLOR ? `\u001b[1m\u001b[38;2;255;255;255m${text}\u001b[0m` : String(text))
-const textPrimary = rgb(242, 242, 247)   // Primary content
-const textSecondary = rgb(161, 161, 166) // Secondary labels, descriptions
-const textTertiary = rgb(110, 110, 115)  // Tertiary paths & metadata
-const borderSlate = rgb(72, 72, 84)      // Card frame border
-const borderActive = rgb(10, 132, 255)   // Highlighted border
-const borderWarn = rgb(255, 159, 10)     // Warning border
-
-const codeSnippet = (text) =>
-  COLOR ? `\u001b[48;2;32;36;48m\u001b[38;2;255;255;255m\u001b[1m ${text} \u001b[0m` : ` ${text} `
-
-const stateGlyph = {
-  ok: appleGreen('✓'),
-  warn: appleOrange('▲'),
-  bad: appleRed('✗'),
-  idle: textTertiary('·')
-}
-
-function glyphFor(status) {
-  return stateGlyph[status] ?? stateGlyph.idle
-}
-
-function pill(text, type = 'blue') {
-  if (!COLOR) return `[${text}]`
-  switch (type) {
-    case 'green':  return `${appleGreen('●')} ${appleGreen(bold(`[ ${text} ]`))}`
-    case 'red':    return `${appleRed('✗')} ${appleRed(bold(`[ ${text} ]`))}`
-    case 'orange':
-    case 'yellow': return `${appleOrange('▲')} ${appleOrange(bold(`[ ${text} ]`))}`
-    case 'purple': return `${applePurple(bold(`[ ${text} ]`))}`
-    case 'cyan':   return `${appleCyan(bold(`[ ${text} ]`))}`
-    case 'blue':
-    default:       return `${appleBlue(bold(`[ ${text} ]`))}`
-  }
-}
-
-function columns() {
-  const c = process.stdout.columns || 80
-  return Math.max(68, Math.min(c, 86))
-}
+// Semantic Palette
+const cBlue = rgb(10, 132, 255)       // Brand, highlights, active step markers
+const cGreen = rgb(48, 209, 88)      // Healthy, verified, success (✔, ●)
+const cRed = rgb(255, 69, 58)        // Critical error, offline, failure (✖)
+const cYellow = rgb(255, 159, 10)    // Warning, attention needed (▲)
+const cWhite = (t) => (COLOR ? `\u001b[1m\u001b[38;2;255;255;255m${t}\u001b[0m` : String(t)) // High-contrast text
+const cGray = rgb(160, 160, 165)     // Clear, readable secondary text
+const cGuide = rgb(85, 85, 95)       // Structural tree guide lines (┌, │, └)
 
 function vlen(text) {
-  const clean = String(text).replace(/\u001b\[[0-9;]*m/g, '')
-  let len = 0
-  for (const ch of clean) {
-    const code = ch.codePointAt(0)
-    if ((code >= 0x1F300 && code <= 0x1F9FF) || (code >= 0x2600 && code <= 0x27BF)) len += 2
-    else len += 1
-  }
-  return len
+  return String(text).replace(/\u001b\[[0-9;]*m/g, "").length
 }
 
 function padEnd(text, width) {
-  return text + ' '.repeat(Math.max(0, width - vlen(text)))
-}
-
-function trimTo(text, width) {
-  if (vlen(text) <= width) return text
-  let plain = String(text).slice(0, Math.max(0, width - 1))
-  return plain + '…'
+  return text + " ".repeat(Math.max(0, width - vlen(text)))
 }
 
 function line(text = '') {
@@ -153,64 +94,33 @@ function gap() {
   line()
 }
 
-// Card container (SwiftUI Grouped Inset Box)
-function card(title, badgeText, rows, width = columns(), borderColor = borderSlate) {
-  const badgePart = badgeText ? ` [ ${badgeText} ]` : ''
-  const titlePart = ` ${title}${badgePart} `
-  const padTop = width - 2 - vlen(titlePart)
-  line('  ' + borderColor('╭─' + titlePart + '─'.repeat(Math.max(0, padTop - 2)) + '╮'))
-  for (const r of rows) {
-    const pad = width - 4 - vlen(r)
-    line('  ' + borderColor('│ ') + r + ' '.repeat(Math.max(0, pad)) + borderColor(' │'))
-  }
-  line('  ' + borderColor('╰' + '─'.repeat(width - 2) + '╯'))
-}
-
-// SwiftUI Inspector Form Card
-function formCard(title, fields, width = columns(), borderColor = borderSlate) {
-  const titlePart = ` ${title} `
-  const padTop = width - 2 - vlen(titlePart)
-  line('  ' + borderColor('╭─' + titlePart + '─'.repeat(Math.max(0, padTop - 2)) + '╮'))
-  for (let i = 0; i < fields.length; i++) {
-    const f = fields[i]
-    const lbl = textSecondary('  FIELD: ') + appleCyan(bold(f.label.toUpperCase()))
-    line('  ' + borderColor('│') + lbl + ' '.repeat(Math.max(0, width - 2 - vlen(lbl))) + borderColor('│'))
-    for (const val of f.values) {
-      const v = '    ' + textWhite(val)
-      line('  ' + borderColor('│') + v + ' '.repeat(Math.max(0, width - 2 - vlen(v))) + borderColor('│'))
-    }
-    if (f.hint) {
-      const h = '    ' + textSecondary('↳ ' + f.hint)
-      line('  ' + borderColor('│') + h + ' '.repeat(Math.max(0, width - 2 - vlen(h))) + borderColor('│'))
-    }
-    if (i < fields.length - 1) {
-      line('  ' + borderColor('│') + ' '.repeat(width - 2) + borderColor('│'))
-    }
-  }
-  line('  ' + borderColor('╰' + '─'.repeat(width - 2) + '╯'))
-}
-
-function renderBanner() {
-  const bannerLines = [
-    '   ___ _           _     _   _       _                 _              _ ',
-    '  / __\\ |__   __ _| |_  | | | |_ __ | | ___  __ _  ___| |__   ___  __| |',
-    ' / /  | \'_ \\ / _` | __| | | | | \'_ \\| |/ _ \\/ _` |/ __| \'_ \\ / _ \\/ _` |',
-    '/ /___| | | | (_| | |_  | |_| | | | | |  __/ (_| |\\__ \\ | | |  __/ (_| |',
-    '\\____/|_| |_|\\__,_|\\__|  \\___/|_| |_|_|\\___|\\__,_||___/_| |_|\\___|\\__,_|'
-  ]
-  const colors = [
-    [100, 210, 255],
-    [85, 175, 250],
-    [94, 140, 245],
-    [94, 92, 230],
-    [150, 90, 235]
-  ]
+// Tree Guide Formatting
+function treeHeader(title, subtitle = '') {
   gap()
-  bannerLines.forEach((l, i) => {
-    const [r, g, b] = colors[i]
-    line('  ' + (COLOR ? `\u001b[1m\u001b[38;2;${r};${g};${b}m${l}\u001b[0m` : l))
-  })
-  line('  ' + textWhite(' CHAT UNLEASHED') + '  ' + applePurple(`[ ${DISPLAY_VERSION} ]`) + '  ' + textSecondary('Local MCP Reach for ChatGPT Chat'))
+  line(cGuide('┌  ') + cWhite(title) + (subtitle ? cGray(' · ' + subtitle) : ''))
+  line(cGuide('│'))
+}
+
+function treeStep(stepNum, totalSteps, title) {
+  line(cGuide('◇  ') + bold(cBlue(`Step ${stepNum} of ${totalSteps}: `)) + cWhite(title))
+}
+
+function treeItem(ok, label, value = '') {
+  const mark = ok ? cGreen('✔ ') : cRed('✖ ')
+  line(cGuide('│  ') + mark + cWhite(label) + (value ? ' ' + cGray(value) : ''))
+}
+
+function treeInfo(text) {
+  line(cGuide('│  ') + cGray(text))
+}
+
+function treeLink(label, url) {
+  line(cGuide('│  ') + cGray(label + ': ') + cBlue(url))
+}
+
+function treeFooter(text, ok = true) {
+  line(cGuide('│'))
+  line(cGuide('└  ') + (ok ? cGreen(bold('✔ ' + text)) : cRed(bold('✖ ' + text))))
   gap()
 }
 
@@ -219,7 +129,7 @@ async function withSpinner(label, work) {
   if (!process.stdout.isTTY || NO_COLOR) return run()
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   let frame = 0
-  const paint = () => process.stdout.write(`\r\u001b[K  ${appleCyan(frames[frame++ % frames.length])} ${textSecondary(label)}`)
+  const paint = () => process.stdout.write(`\r\u001b[K  ${cBlue(frames[frame++ % frames.length])} ${cGray(label)}`)
   paint()
   const timer = setInterval(paint, 80)
   try {
@@ -266,6 +176,7 @@ function findJobs() {
     const text = readText(path) || ''
     const label = (text.match(/<key>Label<\/key>\s*<string>([^<]+)<\/string>/) || [])[1]
     if (!label) continue
+    if (label.includes('legacy')) continue // Preserve legacy setups
     if (text.includes('tunnel-client') && text.includes(' run ')) jobs.tunnel = { label, path }
     if (text.includes('local-agent-mcp') && text.includes('--http')) jobs.server = { label, path }
   }
@@ -289,8 +200,8 @@ function keyState(profile) {
   if (process.env.CONTROL_PLANE_API_KEY) return { present: true, source: 'environment ($CONTROL_PLANE_API_KEY)' }
   const envText = readText(ENV_FILE) || ''
   const match = envText.match(/^\s*(?:export\s+)?CONTROL_PLANE_API_KEY\s*=\s*(.+)$/m)
-  if (match && match[1].trim().length > 1) return { present: true, source: '.env.tunnel file' }
-  if (profile?.apiKey && !profile.apiKey.startsWith('env:')) return { present: true, source: 'tunnel profile' }
+  if (match && match[1].trim().length > 1) return { present: true, source: '.env.tunnel' }
+  if (profile?.apiKey && !profile.apiKey.startsWith('env:')) return { present: true, source: 'the profile' }
   if (profile?.apiKey?.startsWith('env:')) {
     return { present: false, source: null, waiting: profile.apiKey.slice(4) }
   }
@@ -441,27 +352,18 @@ function nextStep(state) {
   if (!client.installed) {
     return {
       command: 'brew install openai/tools/tunnel-client',
-      note: 'Installs the client binary that carries the tunnel to OpenAI.'
+      note: 'Installs the client binary required for the OpenAI tunnel.'
     }
   }
-  if (!profile.exists) {
-    return { command: 'chat-unleashed setup', note: 'Creates a tunnel profile pointed at this server.' }
+  if (!profile.exists || !profile.tunnelId || !key.present) {
+    return { command: 'chat-unleashed setup', note: 'Run the step-by-step setup wizard to configure the tunnel.' }
   }
-  if (!key.present) {
-    return { command: 'chat-unleashed setup', note: `The profile asks for ${key.waiting || 'CONTROL_PLANE_API_KEY'}, and it is not set.` }
-  }
-  if (!profile.tunnelId) {
-    return { command: 'chat-unleashed setup', note: 'The profile has no tunnel ID configured yet.' }
-  }
-  if (!server.healthy) {
-    return { command: 'chat-unleashed restart', note: `Nothing is answering at ${server.url}.` }
-  }
-  if (!tunnel.ready) {
-    return { command: 'chat-unleashed restart', note: `The tunnel answers "${trimTo(tunnel.body, 40)}" instead of ready.` }
+  if (!server.healthy || !tunnel.ready) {
+    return { command: 'chat-unleashed restart', note: 'One or more services need to be restarted to reconnect.' }
   }
   return {
     command: 'chat-unleashed connect',
-    note: 'Both services answer. Add Chat Unleashed in ChatGPT, then start giving it tasks on your Mac!'
+    note: 'Both services are running! Add Chat Unleashed in ChatGPT to start using it.'
   }
 }
 
@@ -479,243 +381,165 @@ function hostOf(url) {
 }
 
 // ============================================================================
-// Dashboard Screen (HIG Grouped Inset Cards)
+// Dashboard Screen (Clean, Aligned, High Contrast)
 // ============================================================================
 function renderDashboard(state) {
-  const width = columns()
-  renderBanner()
-
+  gap()
+  line(cWhite(' Chat Unleashed') + '  ' + cBlue(`[ ${DISPLAY_VERSION} ]`) + '  ' + cGray('Local MCP Reach for ChatGPT'))
+  
   const allOperational = state.server.healthy && state.tunnel.ready
   if (allOperational) {
-    line(`  ${appleGreen('●')} ${textWhite('STATUS:')} ${appleGreen(bold('ALL SYSTEMS OPERATIONAL (READY FOR CHATGPT)'))}`)
+    line(cGreen('● All systems operational') + cGray(` · ${state.server.tools ?? '?'} tools ready on port 3344`))
   } else {
-    line(`  ${appleOrange('▲')} ${textWhite('STATUS:')} ${appleOrange(bold('ACTION REQUIRED · SERVICES PENDING OR OFFLINE'))}`)
+    line(cRed('● Services offline') + cGray(' · restart required to connect to ChatGPT'))
   }
   gap()
 
-  // 1. System Environment Card
-  card(
-    appleCyan(bold(' SYSTEM ENVIRONMENT')),
-    state.platform.arch ? state.platform.arch.toUpperCase() : 'MACOS',
-    [
-      `${textSecondary('macOS             ')} ${textWhite(state.platform.macOS || 'unknown')} ${textSecondary(`(Apple Silicon ${state.platform.arch})`)}`,
-      `${textSecondary('Node.js runtime   ')} ${textWhite(state.platform.node)}`,
-      `${textSecondary('tunnel-client     ')} ${state.client.installed ? `${textWhite(state.client.version || 'installed')} ${textSecondary(`(${displayPath(state.client.path)})`)}` : appleRed('not installed')} ${glyphFor(state.client.installed ? 'ok' : 'bad')}`
-    ],
-    width
-  )
+  const rows = [
+    ['System', `macOS ${state.platform.macOS || 'unknown'} (${state.platform.arch}) · Node ${state.platform.node} · tunnel-client ${state.client.version || 'missing'}`, state.client.installed],
+    ['Tunnel', state.profile.tunnelId ? `${maskId(state.profile.tunnelId)} (profile: ${state.profile.name})` : 'Not configured', Boolean(state.profile.tunnelId)],
+    ['Runtime Key', state.key.present ? `Stored in ${state.key.source}` : 'Not set', state.key.present],
+    ['MCP Server', state.server.healthy ? `${state.server.tools ?? '?'} tools online · ${state.server.url}` : `Offline · ${state.server.url}`, state.server.healthy],
+    ['Tunnel Link', state.tunnel.ready ? `Connected & ready · ${state.tunnel.url}/readyz` : `Offline (${state.tunnel.body}) · ${state.tunnel.url}`, state.tunnel.ready]
+  ]
+
+  for (const [lbl, val, ok] of rows) {
+    const mark = ok ? cGreen('✔') : cRed('✖')
+    const paddedLabel = cGray(padEnd(lbl, 14))
+    const formattedVal = ok ? (lbl.includes('Server') || lbl.includes('Link') ? cGreen(val) : cWhite(val)) : cRed(val)
+    line(`  ${paddedLabel}${padEnd(formattedVal, 64)} ${mark}`)
+  }
+
   gap()
-
-  // 2. Tunnel Configuration Card
-  card(
-    appleIndigo(bold('✦ TUNNEL CONFIGURATION')),
-    state.profile.exists ? 'CONFIGURED' : 'UNCONFIGURED',
-    [
-      `${textSecondary('Profile           ')} ${state.profile.exists ? `${textWhite(state.profile.name)} ${textSecondary(`(${displayPath(state.profile.path)})`)}` : appleRed('missing')} ${glyphFor(state.profile.exists ? 'ok' : 'bad')}`,
-      `${textSecondary('Tunnel ID         ')} ${state.profile.tunnelId ? textWhite(maskId(state.profile.tunnelId)) : appleRed('not configured')} ${glyphFor(state.profile.tunnelId ? 'ok' : 'bad')}`,
-      `${textSecondary('Runtime Key       ')} ${state.key.present ? `${textWhite('Loaded')} ${textSecondary(`from ${state.key.source}`)}` : appleRed('not set')} ${glyphFor(state.key.present ? 'ok' : 'bad')}`
-    ],
-    width
-  )
-  gap()
-
-  // 3. Services Card
-  const serverDetail = state.server.healthy
-    ? `${appleGreen(bold('Running'))} ${textSecondary(`· ${state.server.tools ?? '?'} tools · ${hostOf(state.server.url)}`)}`
-    : `${appleRed(bold('Offline'))} ${textSecondary(`· ${state.server.healthOk ? 'health only' : 'no answer'} · ${hostOf(state.server.url)}`)}`
-
-  const tunnelDetail = state.tunnel.ready
-    ? `${appleGreen(bold('Connected'))} ${textSecondary(`· ready · ${hostOf(state.tunnel.url)}`)}`
-    : `${appleRed(bold('Offline'))} ${textSecondary(`· ${trimTo(state.tunnel.body, 28)} · ${hostOf(state.tunnel.url)}`)}`
-
-  card(
-    appleMint(bold('⚡ SERVICES & ENDPOINTS')),
-    allOperational ? appleGreen('HEALTHY') : appleRed('OFFLINE'),
-    [
-      `${textSecondary('MCP Server        ')} ${serverDetail} ${glyphFor(state.server.healthy ? 'ok' : 'bad')}`,
-      `${textSecondary('Secure Tunnel     ')} ${tunnelDetail} ${glyphFor(state.tunnel.ready ? 'ok' : 'bad')}`
-    ],
-    width
-  )
-  gap()
-
-  // 4. Action Card
   const next = nextStep(state)
-  const isSetupDone = allOperational && next.command.includes('connect')
-  card(
-    isSetupDone ? appleBlue(bold('❯ READY FOR CHATGPT')) : appleOrange(bold('❯ RECOMMENDED NEXT ACTION')),
-    isSetupDone ? 'CONNECT' : 'ACTION REQUIRED',
-    [
-      `${textSecondary('Execute command:')}`,
-      `  ${codeSnippet(next.command)}`,
-      '',
-      `${textSecondary('↳ Detail: ')}${textWhite(next.note)}`
-    ],
-    width,
-    isSetupDone ? borderActive : borderWarn
-  )
-
-  if (flags.has('--verbose')) {
-    gap()
-    line(`  ${textTertiary(`Probed in ${state.ms} ms`) }`)
-  }
+  line(cGray('  Next step:'))
+  line(`    ${cGray('Run')} ${cWhite(bold(next.command))} ${cGray('· ' + next.note)}`)
   gap()
 }
 
 // ============================================================================
-// ChatGPT Connector Form Inspector (Connect Guide)
+// Connect Guide (Dead-Simple Form Values to Copy for a 5-Year-Old)
 // ============================================================================
 function connectorGuide(state) {
-  const width = columns()
-  line(`  ${appleIndigo(bold('✦ CHATGPT CONNECTOR CONFIGURATION'))}`)
-  line(`  ${textSecondary('Chat is where your conversations happen; this connector grants it local reach.')}`)
-  gap()
+  treeHeader('ChatGPT Custom Connector Settings', '5 Values to Copy')
+  treeInfo('Open ChatGPT in your browser, go to:')
+  treeInfo('Settings ❯ Connectors (or Plugins) ❯ "Add custom MCP server"')
+  line(cGuide('│'))
 
-  formCard(
-    appleCyan(bold('FORM INSPECTOR: VALUES TO COPY INTO CHATGPT')),
-    [
-      { label: 'Name', values: [CONNECTOR_NAME] },
-      {
-        label: 'Description',
-        values: [
-          'Runs commands, reads and writes files, looks at the screen and',
-          'drives apps on my Mac. Use it when a request needs work done',
-          'on the local machine instead of only an answer.'
-        ]
-      },
-      { label: 'Connection', values: ['Tunnel'] },
-      {
-        label: 'Tunnel',
-        values: [state?.profile?.tunnelId ? state.profile.tunnelId : 'run chat-unleashed setup first']
-      },
-      {
-        label: 'Authentication',
-        values: ['None'],
-        hint: 'None is correct: your local tunnel client manages keys securely; ChatGPT receives no direct token.'
-      }
-    ],
-    width
-  )
-  gap()
+  const fields = [
+    { num: '1', name: 'Name', value: CONNECTOR_NAME },
+    { num: '2', name: 'Description', value: CONNECTOR_DESCRIPTION },
+    { num: '3', name: 'Connection Type', value: 'Tunnel' },
+    { num: '4', name: 'Tunnel ID', value: state?.profile?.tunnelId || 'run chat-unleashed setup first' },
+    { num: '5', name: 'Authentication', value: 'None', hint: 'Leave as None: your local Mac tunnel authenticates automatically.' }
+  ]
 
-  card(
-    appleBlue(bold('⌘ STEP-BY-STEP SETUP IN CHATGPT')),
-    'WALKTHROUGH',
-    [
-      `${appleCyan(bold('[ 1 ]'))} ${textWhite('Open')} ${underline('chatgpt.com')} ${textWhite('in your browser and sign in')}`,
-      `${appleCyan(bold('[ 2 ]'))} ${textWhite('Navigate to')} ${textSecondary('Settings ❯ Security & login ❯ turn on Developer mode')}`,
-      `${appleCyan(bold('[ 3 ]'))} ${textWhite('Navigate to')} ${textSecondary('Settings ❯ Connectors (or Plugins) ❯ "Add custom MCP server"')}`,
-      `${appleCyan(bold('[ 4 ]'))} ${textWhite('Paste the 5 values above, click Save, then click "Refresh tools" in connector details')}`,
-      `${appleCyan(bold('[ 5 ]'))} ${textWhite('Open a new chat, pick "Chat Unleashed" from (+), and ask it to do something local!')}`
-    ],
-    width
-  )
-  gap()
+  for (const f of fields) {
+    line(cGuide('│  ') + bold(cBlue(`${f.num}. ${f.name}:`)))
+    line(cGuide('│     ') + cWhite(f.value))
+    if (f.hint) line(cGuide('│     ') + cGray(f.hint))
+    line(cGuide('│'))
+  }
 
-  line(`  ${appleBlue('✦')} ${textSecondary('OpenAI Tunnels:   ')} ${underline(TUNNELS_URL)}`)
-  line(`  ${appleBlue('✦')} ${textSecondary('OpenAI API Keys:  ')} ${underline(KEYS_URL)}`)
-  line(`  ${appleBlue('✦')} ${textSecondary('ChatGPT Settings: ')} ${underline(CONNECTORS_URL)}`)
+  treeInfo('Quick Links:')
+  treeLink('OpenAI Tunnels', TUNNELS_URL)
+  treeLink('OpenAI API Keys', KEYS_URL)
+  treeLink('ChatGPT Settings', CONNECTORS_URL)
+
+  treeFooter('Tip: Run `chat-unleashed connect --open` to open ChatGPT directly.', true)
 }
 
 async function connectCommand() {
   const state = await withSpinner('Checking tunnel readiness', collectState)
   if (!state.profile.exists || !state.profile.tunnelId || !state.key.present) {
-    renderBanner()
-    card(
-      appleOrange(bold('TUNNEL NOT YET CONFIGURED')),
-      'SETUP REQUIRED',
-      [
-        textSecondary('The tunnel profile or API credentials are not set up on this machine.'),
-        '',
-        `Run: ${codeSnippet('chat-unleashed setup')}`
-      ],
-      columns(),
-      borderWarn
-    )
+    gap()
+    line(cRed('✖ Tunnel is not configured yet.'))
+    line(cGray('  Run ') + cWhite('chat-unleashed setup') + cGray(' to set it up step-by-step.'))
     gap()
     return 1
   }
+
   if (flags.has('--open')) {
     for (const url of [TUNNELS_URL, KEYS_URL, CONNECTORS_URL]) {
       spawnSync('open', [url], { timeout: 5000 })
     }
-    line(`  ${appleGreen('✓')} ${textSecondary('Opened tunnel, key and connector pages in your default browser.')}`)
+    line(cGreen('✔ ') + cGray('Opened ChatGPT and OpenAI settings in your browser.'))
   }
-  renderBanner()
-  line(`  ${state.tunnel.ready ? appleGreen('●') : appleRed('✗')} ${textWhite('TUNNEL STATUS:')} ${state.tunnel.ready ? appleGreen(bold('ONLINE & READY')) : appleRed(bold(`OFFLINE (${trimTo(state.tunnel.body, 30)})`))}`)
-  gap()
+
   connectorGuide(state)
-  gap()
   return state.tunnel.ready ? 0 : 1
 }
 
 // ============================================================================
-// Doctor Screen (Diagnostic Test Suites & Scorecard)
+// Doctor Command (Clean Diagnostic Checklist)
 // ============================================================================
 function checkList(state) {
   const checks = []
-  const add = (title, status, detail, remedy) => checks.push({ title, status, detail, remedy })
+  const add = (group, title, status, detail, remedy) => checks.push({ group, title, status, detail, remedy })
 
-  add('macOS Version', 'ok', `${state.platform.macOS || 'unknown'} (${state.platform.arch})`, null)
-  add('Node.js Runtime', 'ok', state.platform.node, null)
-
+  add('System Environment', 'macOS Version', 'ok', `${state.platform.macOS || 'unknown'} (${state.platform.arch})`, null)
+  add('System Environment', 'Node.js Runtime', 'ok', state.platform.node, null)
   add(
+    'System Environment',
     'tunnel-client CLI',
     state.client.installed ? 'ok' : 'bad',
-    state.client.installed ? `${state.client.version || 'unknown'} at ${displayPath(state.client.path)}` : 'Not found on PATH.',
+    state.client.installed ? `${state.client.version || 'installed'} at ${displayPath(state.client.path)}` : 'Missing from PATH',
     state.client.installed ? null : 'brew install openai/tools/tunnel-client'
   )
 
   add(
+    'Configuration & Credentials',
     'Tunnel Profile',
     state.profile.exists ? 'ok' : 'bad',
-    state.profile.exists ? displayPath(state.profile.path) : `${PROFILE}.yaml does not exist.`,
+    state.profile.exists ? displayPath(state.profile.path) : `${PROFILE}.yaml not found`,
     state.profile.exists ? null : 'chat-unleashed setup'
   )
-
   add(
+    'Configuration & Credentials',
     'Runtime API Key',
     state.key.present ? 'ok' : 'bad',
-    state.key.present ? `Loaded from ${state.key.source}.` : 'The profile references a variable that is not set.',
+    state.key.present ? `Loaded from ${state.key.source}` : 'Key missing',
     state.key.present ? null : 'chat-unleashed setup'
   )
-
   add(
+    'Configuration & Credentials',
     'Tunnel ID',
     state.profile.tunnelId ? 'ok' : 'bad',
-    state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'No tunnel_id found in profile.',
+    state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'No tunnel_id in profile',
     state.profile.tunnelId ? null : 'chat-unleashed setup'
   )
 
   const serverJob = state.jobs.server
   add(
+    'Background Services & Connectivity',
     'MCP Server Daemon',
     serverJob?.loaded ? 'ok' : 'warn',
-    serverJob?.loaded ? `${serverJob.label} (${serverJob.running ? `running PID ${serverJob.pid}` : 'loaded, idle'})` : 'No launchd job found.',
-    serverJob?.loaded ? null : 'chat-unleashed setup'
+    serverJob?.loaded ? `${serverJob.label} (${serverJob.running ? `PID ${serverJob.pid}` : 'idle'})` : 'Job not loaded in launchd',
+    serverJob?.loaded ? null : 'chat-unleashed restart'
   )
 
   const tunnelJob = state.jobs.tunnel
   add(
+    'Background Services & Connectivity',
     'Tunnel Daemon',
     tunnelJob?.loaded ? 'ok' : 'warn',
-    tunnelJob?.loaded ? `${tunnelJob.label} (${tunnelJob.running ? `running PID ${tunnelJob.pid}` : 'loaded, idle'})` : 'No launchd job found.',
-    tunnelJob?.loaded ? null : 'chat-unleashed setup'
+    tunnelJob?.loaded ? `${tunnelJob.label} (${tunnelJob.running ? `PID ${tunnelJob.pid}` : 'idle'})` : 'Job not loaded in launchd',
+    tunnelJob?.loaded ? null : 'chat-unleashed restart'
   )
 
   add(
+    'Background Services & Connectivity',
     'MCP Server Handshake',
     state.server.healthy ? 'ok' : 'bad',
-    state.server.healthy
-      ? `${state.server.tools ?? '?'} tools responsive at ${state.server.url}`
-      : `${state.server.healthOk ? 'Responds to /health, but MCP handshake timed out' : 'No response'} at ${state.server.url}.`,
+    state.server.healthy ? `${state.server.tools ?? '?'} tools responding on ${state.server.url}` : `No answer on ${state.server.url}`,
     state.server.healthy ? null : 'chat-unleashed restart'
   )
 
   add(
+    'Background Services & Connectivity',
     'Tunnel Readiness Probe',
     state.tunnel.ready ? 'ok' : 'bad',
-    state.tunnel.ready ? `Ready at ${state.tunnel.url}/readyz` : `Answers "${trimTo(state.tunnel.body, 40)}" at ${state.tunnel.url}/readyz.`,
+    state.tunnel.ready ? `Connected & ready on ${state.tunnel.url}/readyz` : `Answers "${state.tunnel.body}" on ${state.tunnel.url}/readyz`,
     state.tunnel.ready ? null : 'chat-unleashed restart'
   )
 
@@ -723,7 +547,7 @@ function checkList(state) {
 }
 
 async function doctor() {
-  const state = await withSpinner('Executing diagnostic test suites', collectState)
+  const state = await withSpinner('Running diagnostic checks', collectState)
   if (WANTS_JSON) {
     const checks = checkList(state)
     process.stdout.write(JSON.stringify({ ok: checks.every((c) => c.status !== 'bad'), checks }, null, 2) + '\n')
@@ -731,245 +555,49 @@ async function doctor() {
   }
 
   const checks = checkList(state)
-  const width = columns()
-  renderBanner()
+  treeHeader('Chat Unleashed Doctor', 'System Diagnostics')
 
-  const groups = [
-    { title: appleCyan(bold(' THIS MAC')), keys: ['macOS Version', 'Node.js Runtime', 'tunnel-client CLI'] },
-    { title: appleIndigo(bold('✦ CONFIGURATION & CREDENTIALS')), keys: ['Tunnel Profile', 'Runtime API Key', 'Tunnel ID'] },
-    { title: appleMint(bold('⚡ SERVICES & HANDSHAKES')), keys: ['MCP Server Daemon', 'Tunnel Daemon', 'MCP Server Handshake', 'Tunnel Readiness Probe'] }
-  ]
-
+  const groups = ['System Environment', 'Configuration & Credentials', 'Background Services & Connectivity']
   for (const g of groups) {
-    const rows = []
-    for (const key of g.keys) {
-      const c = checks.find((entry) => entry.title === key)
-      if (!c) continue
-      const mark = c.status === 'ok' ? appleGreen('✓ PASS') : c.status === 'warn' ? appleOrange('! WARN') : appleRed('✗ FAIL')
-      const left = `${textSecondary(padEnd(key, 24))}${textWhite(trimTo(c.detail, width - 36))}`
-      const pad = width - 4 - vlen(left) - vlen(mark)
-      rows.push(left + ' '.repeat(Math.max(2, pad)) + mark)
+    line(cGuide('◇  ') + cWhite(bold(g)))
+    const groupChecks = checks.filter((c) => c.group === g)
+    for (const c of groupChecks) {
+      const ok = c.status === 'ok'
+      const mark = ok ? cGreen('✔ ') : c.status === 'warn' ? cYellow('▲ ') : cRed('✖ ')
+      line(cGuide('│  ') + mark + cWhite(c.title) + cGray(' · ' + c.detail))
       if (c.remedy) {
-        rows.push(`  ${textSecondary('↳ Fix: ')}${codeSnippet(c.remedy)}`)
+        line(cGuide('│     ') + cGray('↳ To fix: ') + cWhite(c.remedy))
       }
     }
-    card(g.title, null, rows, width)
-    gap()
+    line(cGuide('│'))
   }
 
-  const passed = checks.filter((c) => c.status === 'ok').length
-  const warned = checks.filter((c) => c.status === 'warn').length
   const failed = checks.filter((c) => c.status === 'bad').length
+  const passed = checks.filter((c) => c.status === 'ok').length
 
-  const allGood = failed === 0
-  const summaryBadge = allGood ? appleGreen('HEALTHY') : appleRed('ISSUES DETECTED')
-  const summaryRows = [
-    `${appleGreen('●')} ${textWhite(`${passed} Passed`)}  ${warned ? `${appleOrange('▲')} ${textWhite(`${warned} Optional / Notice`)}  ` : ''}${failed ? `${appleRed('✗')} ${textWhite(`${failed} Need Attention`)}` : ''}`
-  ]
-
-  if (!allGood) {
-    const firstFail = checks.find((c) => c.status === 'bad')
-    if (firstFail?.remedy) {
-      summaryRows.push('')
-      summaryRows.push(`${textSecondary('Primary recommendation:')}`)
-      summaryRows.push(`  ${codeSnippet(firstFail.remedy)}`)
-    }
+  if (failed === 0) {
+    treeFooter(`All ${passed} checks passed! Everything is healthy and connected.`, true)
+    return 0
   } else {
-    summaryRows.push(`${textSecondary('All systems and daemons are communicating properly with OpenAI.')}`)
+    treeFooter(`${failed} check${failed > 1 ? 's' : ''} failed. Run recommended fixes above.`, false)
+    return 1
   }
-
-  card(
-    allGood ? appleGreen(bold('◈ DIAGNOSTIC SUMMARY')) : appleRed(bold('◈ DIAGNOSTIC SUMMARY')),
-    summaryBadge,
-    summaryRows,
-    width,
-    allGood ? borderSlate : borderWarn
-  )
-  gap()
-
-  return failed > 0 ? 1 : 0
 }
 
 // ============================================================================
-// Service Plists & Lifecycle
+// Setup Wizard (Step-by-Step, Interactive, Dead-Simple for Anyone)
 // ============================================================================
-function plistServer(nodePath, entry) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.local-agent-mcp.server</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${nodePath}</string>
-    <string>${entry}</string>
-    <string>--http</string>
-    <string>--port</string>
-    <string>3344</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
-  <key>WorkingDirectory</key><string>${SHARE}</string>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>5</integer>
-  <key>StandardOutPath</key><string>${join(LOG_DIR, 'server-http.log')}</string>
-  <key>StandardErrorPath</key><string>${join(LOG_DIR, 'server-http.log')}</string>
-</dict>
-</plist>
-`
-}
-
-function plistTunnel(clientPath) {
-  const script = `set -a; f=${ENV_FILE}; [ -s "$f" ] || cp "$f.bak" "$f" 2>/dev/null; . "$f"; set +a; exec ${clientPath} run --profile ${PROFILE} >> ${join(LOG_DIR, 'tunnel-daemon.log')} 2>&1`
-  const escaped = script.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.local-agent-mcp.tunnel</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/bash</string>
-    <string>-c</string>
-    <string>${escaped}</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
-  <key>WorkingDirectory</key><string>${SHARE}</string>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>15</integer>
-  <key>StandardOutPath</key><string>${join(LOG_DIR, 'tunnel-launchd.log')}</string>
-  <key>StandardErrorPath</key><string>${join(LOG_DIR, 'tunnel-launchd.log')}</string>
-</dict>
-</plist>
-`
-}
-
-function ensureJobs(state) {
-  mkdirSync(AGENTS_DIR, { recursive: true })
-  mkdirSync(LOG_DIR, { recursive: true })
-  const created = []
-
-  if (!state.jobs.server) {
-    const nodePath = which('node') || '/opt/homebrew/bin/node'
-    const entry = state.dist.exists ? state.dist.path : (existsSync(join(PKG_ROOT, 'dist/index.js')) ? join(PKG_ROOT, 'dist/index.js') : null)
-    if (!entry) return { created, error: 'The MCP server is not built yet (run npm run build first).' }
-    const path = join(AGENTS_DIR, 'com.local-agent-mcp.server.plist')
-    writeFileSync(path, plistServer(nodePath, entry), { mode: 0o644 })
-    created.push(path)
-  }
-  if (!state.jobs.tunnel) {
-    if (!state.client.installed) return { created, error: 'tunnel-client is missing (brew install openai/tools/tunnel-client).' }
-    const path = join(AGENTS_DIR, 'com.local-agent-mcp.tunnel.plist')
-    writeFileSync(path, plistTunnel(state.client.path), { mode: 0o644 })
-    created.push(path)
-  }
-  return { created, error: null }
-}
-
-function bootstrap(path, label) {
-  spawnSync('launchctl', ['bootout', `gui/${UID}/${label}`], { encoding: 'utf8', timeout: 4000 })
-  return spawnSync('launchctl', ['bootstrap', `gui/${UID}`, path], { encoding: 'utf8', timeout: 6000 })
-}
-
-function kickJob(job) {
-  if (!job) return false
-  if (!launchJob(job.label).loaded) bootstrap(job.path, job.label)
-  spawnSync('launchctl', ['kickstart', '-k', `gui/${UID}/${job.label}`], { encoding: 'utf8', timeout: 5000 })
-  return true
-}
-
-async function bringUp(jobs, profile, onStep) {
-  if (jobs.server) {
-    kickJob(jobs.server)
-    await onStep('Waiting for MCP server to answer', () =>
-      waitUntil(async () => (await probeMcp(profile.mcpUrl)).ok, 60000))
-  }
-  if (!jobs.tunnel) return
-  const ready = () => waitUntil(async () => {
-    const probe = await getText(`${profile.healthBase}/readyz`, 4000)
-    return probe.ok && probe.text === 'ready'
-  }, 45000)
-  kickJob(jobs.tunnel)
-  if (await onStep('Waiting for tunnel to connect', ready)) return
-  kickJob(jobs.tunnel)
-  await onStep('Waiting for tunnel, retry attempt', ready)
-}
-
-async function waitUntil(check, timeoutMs = 45000) {
-  const started = Date.now()
-  while (Date.now() - started < timeoutMs) {
-    if (await check()) return true
-    await new Promise((resolve) => setTimeout(resolve, 700))
-  }
-  return false
-}
-
-function writeKeyToEnvFile(key) {
-  mkdirSync(SHARE, { recursive: true })
-  const existing = readText(ENV_FILE) || ''
-  const entry = `export CONTROL_PLANE_API_KEY="${key}"`
-  const next = existing.match(/^\s*(?:export\s+)?CONTROL_PLANE_API_KEY\s*=.*$/m)
-    ? existing.replace(/^\s*(?:export\s+)?CONTROL_PLANE_API_KEY\s*=.*$/m, entry)
-    : `${existing.trimEnd()}\n${entry}\n`.trimStart()
-  writeFileSync(ENV_FILE, next, { mode: 0o600 })
-  chmodSync(ENV_FILE, 0o600)
-}
-
-function writeTunnelIdToProfile(path, id) {
-  const text = readText(path)
-  if (!text) return false
-  const next = text.match(/^\s*tunnel_id:.*$/m)
-    ? text.replace(/^(\s*tunnel_id:\s*).*$/m, `$1"${id}"`)
-    : text.replace(/^control_plane:\s*$/m, `control_plane:\n  tunnel_id: "${id}"`)
-  writeFileSync(path, next, { mode: 0o600 })
-  return true
-}
-
-function tunnelIdProblem(value) {
-  return TUNNEL_ID_RE.test(value)
-    ? null
-    : 'tunnel-client expects tunnel_ then 32 lowercase letters or digits, optionally with a 4 character namespace.'
-}
-
-function sanitizeKey(value) {
-  const key = String(value || '').trim()
-  if (!key) return { key: '', problem: 'No key entered. Run chat-unleashed setup when you have it.' }
-  if (!/^[A-Za-z0-9._-]+$/.test(key)) {
-    return { key: '', problem: 'That does not look like a key. Paste it without quotes, spaces or line breaks.' }
-  }
-  return { key, problem: null }
-}
-
-function ensureProfile(tunnelId) {
-  const clientPath = which('tunnel-client')
-  if (!clientPath) return { ok: false, output: 'tunnel-client is not installed.' }
-  const result = spawnSync(clientPath, [
-    'init',
-    '--sample', 'sample_mcp_with_dcr',
-    '--profile', PROFILE,
-    '--tunnel-id', tunnelId,
-    '--mcp-server-url', MCP_URL_FALLBACK,
-    '--health-listen-addr', HEALTH_URL_FALLBACK.replace('http://', ''),
-    '--control-plane-api-key-ref', 'env:CONTROL_PLANE_API_KEY',
-    '--force'
-  ], { encoding: 'utf8', timeout: 30000 })
-  return { ok: result.status === 0, output: `${result.stdout || ''}${result.stderr || ''}`.trim() }
-}
-
 function ask(question, { fallback = '', validate } = {}) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    const label = `  ${appleBlue('❯')} ${textWhite(question)}${fallback ? ` ${textTertiary(`(${fallback})`)}` : ''}: `
-    rl.question(label, (answer) => {
+    const promptText = `${cGuide('?  ')}${cWhite(question)}${fallback ? cGray(` (${fallback})`) : ''}: ${cBlue('›')} `
+    rl.question(promptText, (answer) => {
       rl.close()
       const value = answer.trim() || fallback
       if (validate) {
         const problem = validate(value)
         if (problem) {
-          line(`  ${appleOrange('▲')} ${textSecondary(problem)}`)
+          line(cGuide('│  ') + cRed('✖ ') + cGray(problem))
           ask(question, { fallback, validate }).then(resolve)
           return
         }
@@ -982,7 +610,7 @@ function ask(question, { fallback = '', validate } = {}) {
 function askSecret(question) {
   if (!process.stdin.isTTY) return Promise.resolve('')
   return new Promise((resolve) => {
-    process.stdout.write(`  ${appleBlue('❯')} ${textWhite(question)}: `)
+    process.stdout.write(`${cGuide('?  ')}${cWhite(question)}: ${cBlue('›')} `)
     const stdin = process.stdin
     stdin.setRawMode(true)
     stdin.resume()
@@ -1022,265 +650,366 @@ function askSecret(question) {
   })
 }
 
-// ============================================================================
-// Setup Command (Interactive & Clear Progression)
-// ============================================================================
+function writeKeyToEnvFile(key) {
+  mkdirSync(SHARE, { recursive: true })
+  const existing = readText(ENV_FILE) || ''
+  const entry = `export CONTROL_PLANE_API_KEY="${key}"`
+  const next = existing.match(/^\s*(?:export\s+)?CONTROL_PLANE_API_KEY\s*=.*$/m)
+    ? existing.replace(/^\s*(?:export\s+)?CONTROL_PLANE_API_KEY\s*=.*$/m, entry)
+    : `${existing.trimEnd()}\n${entry}\n`.trimStart()
+  writeFileSync(ENV_FILE, next, { mode: 0o600 })
+  chmodSync(ENV_FILE, 0o600)
+}
+
+function writeTunnelIdToProfile(path, id) {
+  const text = readText(path)
+  if (!text) return false
+  const next = text.match(/^\s*tunnel_id:.*$/m)
+    ? text.replace(/^(\s*tunnel_id:\s*).*$/m, `$1"${id}"`)
+    : text.replace(/^control_plane:\s*$/m, `control_plane:\n  tunnel_id: "${id}"`)
+  writeFileSync(path, next, { mode: 0o600 })
+  return true
+}
+
+function ensureProfile(tunnelId) {
+  const clientPath = which('tunnel-client')
+  if (!clientPath) return { ok: false, output: 'tunnel-client is not installed.' }
+  const result = spawnSync(clientPath, [
+    'init',
+    '--sample', 'sample_mcp_with_dcr',
+    '--profile', PROFILE,
+    '--tunnel-id', tunnelId,
+    '--mcp-server-url', MCP_URL_FALLBACK,
+    '--health-listen-addr', HEALTH_URL_FALLBACK.replace('http://', ''),
+    '--control-plane-api-key-ref', 'env:CONTROL_PLANE_API_KEY',
+    '--force'
+  ], { encoding: 'utf8', timeout: 30000 })
+  return { ok: result.status === 0, output: `${result.stdout || ''}${result.stderr || ''}`.trim() }
+}
+
+function ensureJobs(state) {
+  mkdirSync(AGENTS_DIR, { recursive: true })
+  mkdirSync(LOG_DIR, { recursive: true })
+  const created = []
+
+  if (!state.jobs.server) {
+    const nodePath = which('node') || '/opt/homebrew/bin/node'
+    const entry = state.dist.exists ? state.dist.path : (existsSync(join(PKG_ROOT, 'dist/index.js')) ? join(PKG_ROOT, 'dist/index.js') : null)
+    if (!entry) return { created, error: 'Server bundle is not compiled (run npm run build first).' }
+    const path = join(AGENTS_DIR, 'com.local-agent-mcp.server.plist')
+    writeFileSync(path, plistServer(nodePath, entry), { mode: 0o644 })
+    created.push(path)
+  }
+  if (!state.jobs.tunnel) {
+    if (!state.client.installed) return { created, error: 'tunnel-client is missing (brew install openai/tools/tunnel-client).' }
+    const path = join(AGENTS_DIR, 'com.dhruvgupta.local-agent-tunnel.plist')
+    writeFileSync(path, plistTunnel(state.client.path), { mode: 0o644 })
+    created.push(path)
+  }
+  return { created, error: null }
+}
+
+function plistServer(nodePath, entry) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.local-agent-mcp.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${nodePath}</string>
+    <string>${entry}</string>
+    <string>--http</string>
+    <string>--port</string>
+    <string>3344</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>WorkingDirectory</key><string>${SHARE}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>StandardOutPath</key><string>${join(LOG_DIR, 'server-http.log')}</string>
+  <key>StandardErrorPath</key><string>${join(LOG_DIR, 'server-http.log')}</string>
+</dict>
+</plist>
+`
+}
+
+function plistTunnel(clientPath) {
+  const script = `set -a; f=${ENV_FILE}; [ -s "$f" ] || cp "$f.bak" "$f" 2>/dev/null; . "$f"; set +a; exec ${clientPath} run --profile ${PROFILE} >> ${join(LOG_DIR, 'tunnel-daemon.log')} 2>&1`
+  const escaped = script.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.dhruvgupta.local-agent-tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>${escaped}</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>WorkingDirectory</key><string>${SHARE}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>${join(LOG_DIR, 'tunnel-launchd.log')}</string>
+  <key>StandardErrorPath</key><string>${join(LOG_DIR, 'tunnel-launchd.log')}</string>
+</dict>
+</plist>
+`
+}
+
+function kickJob(job) {
+  if (!job) return false
+  const state = launchJob(job.label)
+  if (!state.loaded) {
+    spawnSync('launchctl', ['load', '-w', job.path], { encoding: 'utf8', timeout: 5000 })
+  }
+  spawnSync('launchctl', ['kickstart', '-k', `gui/${UID}/${job.label}`], { encoding: 'utf8', timeout: 5000 })
+  return true
+}
+
+async function bringUp(jobs, profile, onStep) {
+  if (jobs.server) {
+    kickJob(jobs.server)
+    await onStep('Waiting for MCP server on port 3344', () =>
+      waitUntil(async () => (await probeMcp(profile.mcpUrl)).ok, 60000))
+  }
+  if (!jobs.tunnel) return
+  const ready = () => waitUntil(async () => {
+    const probe = await getText(`${profile.healthBase}/readyz`, 4000)
+    return probe.ok && probe.text === 'ready'
+  }, 45000)
+  kickJob(jobs.tunnel)
+  if (await onStep('Waiting for OpenAI tunnel connection', ready)) return
+  kickJob(jobs.tunnel)
+  await onStep('Waiting for tunnel (second attempt)', ready)
+}
+
+async function waitUntil(check, timeoutMs = 45000) {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (await check()) return true
+    await new Promise((resolve) => setTimeout(resolve, 700))
+  }
+  return false
+}
+
 async function setup() {
   const dryRun = flags.has('--check')
   const assumeYes = flags.has('--yes')
-  const width = columns()
-  renderBanner()
 
-  line(`  ${appleBlue(bold('⚙ GUIDED ONBOARDING SETUP'))}`)
-  line(`  ${textSecondary('Sets up local tunnel, builds executable, and creates launchd daemons.')}`)
-  if (dryRun) line(`  ${appleOrange(bold('[ DRY RUN: NO CHANGES WILL BE WRITTEN ]'))}`)
-  gap()
-
-  const state = await withSpinner('Inspecting current system state', collectState)
-  const checklist = [
-    { name: 'tunnel-client CLI', ok: state.client.installed, detail: state.client.installed ? state.client.version : 'needs Homebrew install' },
-    { name: 'Tunnel Profile', ok: state.profile.exists, detail: state.profile.exists ? displayPath(state.profile.path) : 'will be created' },
-    { name: 'Tunnel ID', ok: Boolean(state.profile.tunnelId), detail: state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'required from OpenAI' },
-    { name: 'Runtime API Key', ok: state.key.present, detail: state.key.present ? `loaded from ${state.key.source}` : 'required from OpenAI' },
-    { name: 'MCP Server Bundle', ok: state.dist.exists, detail: state.dist.exists ? displayPath(state.dist.path) : 'will be compiled' },
-    { name: 'Launchd Daemons', ok: Boolean(state.server.healthy && state.tunnel.ready), detail: state.server.healthy && state.tunnel.ready ? 'both running' : 'will be configured' }
-  ]
-
-  const rows = checklist.map((item, idx) => {
-    const mark = item.ok ? appleGreen('✓ OK') : appleOrange('▲ PENDING')
-    const num = appleCyan(bold(`[${idx + 1}/6]`))
-    const left = `${num} ${textSecondary(padEnd(item.name, 22))}${textWhite(trimTo(item.detail, width - 42))}`
-    const pad = width - 4 - vlen(left) - vlen(mark)
-    return left + ' '.repeat(Math.max(2, pad)) + mark
-  })
-
-  card(appleCyan(bold('📋 SETUP CHECKLIST')), dryRun ? 'INSPECTION' : 'PROGRESS', rows, width)
-  gap()
-
-  const needed = checklist.filter((entry) => !entry.ok).length
-  if (needed === 0) {
-    line(`  ${appleGreen('●')} ${textWhite('Everything is already configured and answering!')}`)
-    gap()
-    connectorGuide(state)
-    gap()
-    return 0
+  treeHeader('Chat Unleashed Setup', 'Step-by-Step Interactive Wizard')
+  if (dryRun) {
+    treeInfo('Running in inspection mode (--check). No files will be changed.')
+    line(cGuide('│'))
   }
+
+  const state = await collectState()
+
+  // --------------------------------------------------------------------------
+  // Step 1: System Requirements
+  // --------------------------------------------------------------------------
+  treeStep(1, 4, 'System Requirements')
+  treeItem(true, 'macOS:', `${state.platform.macOS || 'Apple Silicon'} (${state.platform.arch})`)
+  treeItem(true, 'Node.js:', state.platform.node)
+
+  if (!state.client.installed) {
+    treeItem(false, 'tunnel-client:', 'Not installed on this Mac')
+    line(cGuide('│'))
+    if (dryRun) {
+      treeInfo('Action needed: Install tunnel-client via Homebrew')
+    } else {
+      const consent = assumeYes || await ask('Install tunnel-client via Homebrew now? (Y/n)', {
+        fallback: 'y',
+        validate: (v) => (/^[yn]/i.test(v) ? null : 'Please answer y or n.')
+      })
+      if (!/^y/i.test(consent)) {
+        line(cGuide('│  ') + cYellow('▲ ') + cGray('Skipped. Run manually: brew install openai/tools/tunnel-client'))
+        return 1
+      }
+      line(cGuide('│  ') + cGray('Running brew install openai/tools/tunnel-client...'))
+      const brew = spawnSync('brew', ['install', 'openai/tools/tunnel-client'], { stdio: 'inherit', timeout: 300000 })
+      if (brew.status !== 0) {
+        line(cGuide('│  ') + cRed('✖ ') + cGray('Homebrew install failed. Please install manually and retry.'))
+        return 1
+      }
+      treeItem(true, 'tunnel-client:', 'Installed successfully')
+    }
+  } else {
+    treeItem(true, 'tunnel-client:', `${state.client.version || 'installed'} (${displayPath(state.client.path)})`)
+  }
+  line(cGuide('│'))
+
+  // --------------------------------------------------------------------------
+  // Step 2: OpenAI Secure Tunnel
+  // --------------------------------------------------------------------------
+  treeStep(2, 4, 'OpenAI Tunnel')
+  treeInfo('A secure tunnel lets ChatGPT connect to your Mac without public IP ports.')
+  treeLink('Create your tunnel at', TUNNELS_URL)
+
+  let tunnelId = state.profile.tunnelId
+  if (tunnelId) {
+    treeItem(true, 'Tunnel ID found:', maskId(tunnelId))
+  } else {
+    if (dryRun) {
+      treeInfo('Action needed: Enter your OpenAI Tunnel ID (starts with tunnel_)')
+    } else {
+      line(cGuide('│'))
+      tunnelId = await ask('Enter your Tunnel ID (starts with tunnel_)', {
+        validate: (val) => (TUNNEL_ID_RE.test(val) ? null : 'Invalid format. Tunnel ID must start with "tunnel_" followed by 32 characters.')
+      })
+      treeItem(true, 'Tunnel ID saved:', maskId(tunnelId))
+    }
+  }
+  line(cGuide('│'))
+
+  // --------------------------------------------------------------------------
+  // Step 3: OpenAI Runtime API Key
+  // --------------------------------------------------------------------------
+  treeStep(3, 4, 'OpenAI Runtime API Key')
+  treeInfo('Your Mac uses this key to authenticate with the OpenAI tunnel.')
+  treeLink('Create an API key with "Tunnels Read & Use" at', KEYS_URL)
+
+  if (state.key.present) {
+    treeItem(true, 'Runtime Key:', `Stored securely in ${state.key.source}`)
+  } else {
+    if (dryRun) {
+      treeInfo('Action needed: Enter your OpenAI API key with Tunnels permissions')
+    } else {
+      line(cGuide('│'))
+      treeInfo('Input is masked and saved securely to mode 0600 (never printed):')
+      const entered = await askSecret('Paste your OpenAI Runtime API Key')
+      if (!entered || entered.length < 10) {
+        line(cGuide('│  ') + cRed('✖ ') + cGray('No valid key provided. You can run setup again whenever ready.'))
+        return 1
+      }
+      writeKeyToEnvFile(entered.trim())
+      treeItem(true, 'Runtime Key:', 'Saved securely in ~/.local/share/local-agent-mcp/.env.tunnel')
+    }
+  }
+  line(cGuide('│'))
+
+  // --------------------------------------------------------------------------
+  // Step 4: Background Services & Verification
+  // --------------------------------------------------------------------------
+  treeStep(4, 4, 'Background Services')
 
   if (dryRun) {
-    line(`  ${appleOrange('▲')} ${textWhite(`${needed} step${needed > 1 ? 's' : ''} require changes on this Mac.`)}`)
-    line(`  ${textSecondary('Run without --check to execute the setup steps interactively.')}`)
-    gap()
+    treeInfo('Action needed: Compile server runtime, register launchd daemons, and start.')
+    treeFooter('Dry run complete. Run `chat-unleashed setup` without --check to apply.', true)
     return 0
   }
 
-  // 1. tunnel-client check
-  if (!state.client.installed) {
-    const consent = assumeYes || await ask('Install tunnel-client with Homebrew now? (y/n)', {
-      fallback: 'y',
-      validate: (v) => (/^[yn]/i.test(v) ? null : 'Answer y or n.')
-    })
-    if (!/^y/i.test(consent)) {
-      line(`  ${appleOrange('▲')} ${textSecondary('Skipped. Install manually: brew install openai/tools/tunnel-client')}`)
-      return 1
-    }
-    const result = spawnSync('brew', ['install', 'openai/tools/tunnel-client'], {
-      stdio: 'inherit',
-      timeout: 300000
-    })
-    if (result.status !== 0) {
-      line(`  ${appleRed('✗')} ${textSecondary('Homebrew install did not succeed. Please install tunnel-client and re-run setup.')}`)
-      return 1
-    }
-  }
-
-  // 2. Tunnel ID
-  let tunnelId = state.profile.tunnelId
-  if (!tunnelId) {
-    card(
-      appleBlue(bold('OPENAI TUNNEL ID REQUIRED')),
-      'STEP 2/6',
-      [
-        textSecondary('Create a tunnel at platform.openai.com/settings/organization/tunnels'),
-        textSecondary('and paste the generated ID (starts with tunnel_):')
-      ],
-      width
-    )
-    if (!process.stdin.isTTY) {
-      line(`  ${appleRed('✗')} ${textSecondary('No interactive terminal. Create the tunnel and run setup in a terminal.')}`)
-      return 1
-    }
-    tunnelId = await ask('Tunnel ID', {
-      validate: (value) => (TUNNEL_ID_RE.test(value) ? null : tunnelIdProblem(value))
-    })
-    gap()
-  }
-
-  // 3. Runtime API Key
-  if (!state.key.present) {
-    card(
-      appleBlue(bold('OPENAI RUNTIME API KEY REQUIRED')),
-      'STEP 3/6',
-      [
-        textSecondary('Create an API key with "Tunnels Read and Use" permissions at:'),
-        underline(KEYS_URL),
-        '',
-        textSecondary('Input is masked and stored securely in .env.tunnel (mode 0600).')
-      ],
-      width
-    )
-    if (!process.stdin.isTTY) {
-      line(`  ${appleRed('✗')} ${textSecondary('No interactive terminal. Export CONTROL_PLANE_API_KEY and re-run setup.')}`)
-      return 1
-    }
-    const entered = sanitizeKey(await askSecret('Runtime API Key'))
-    if (entered.problem) {
-      line(`  ${appleRed('✗')} ${textSecondary(entered.problem)}`)
-      return 1
-    }
-    writeKeyToEnvFile(entered.key)
-    line(`  ${appleGreen('✓')} ${textSecondary('API key stored securely in .env.tunnel.')}`)
-    gap()
-  } else if (state.key.source.includes('environment') && !existsSync(ENV_FILE)) {
-    writeKeyToEnvFile(process.env.CONTROL_PLANE_API_KEY)
-    line(`  ${appleGreen('✓')} ${textSecondary('Synchronized key from environment into .env.tunnel.')}`)
-  }
-
-  // 4. Tunnel Profile
+  // Profile setup
   const profilePath = join(CLIENT_CONFIG, `${PROFILE}.yaml`)
-  const wrongTarget = state.profile.exists && state.profile.serverUrl !== MCP_URL_FALLBACK
-  if (!state.profile.exists || wrongTarget) {
-    const result = ensureProfile(tunnelId)
-    if (!result.ok) {
-      line(`  ${appleRed('✗')} ${textSecondary('Failed to initialize tunnel profile.')}`)
+  if (!state.profile.exists || state.profile.serverUrl !== MCP_URL_FALLBACK) {
+    const res = ensureProfile(tunnelId)
+    if (!res.ok) {
+      line(cGuide('│  ') + cRed('✖ ') + cGray('Failed to initialize tunnel profile: ' + res.output))
       return 1
     }
-    line(`  ${appleGreen('✓')} ${textSecondary(`Configured tunnel profile at ${displayPath(profilePath)}.`)}`)
+    treeItem(true, 'Tunnel profile created:', displayPath(profilePath))
   } else if (!state.profile.tunnelId && tunnelId) {
     writeTunnelIdToProfile(profilePath, tunnelId)
-    line(`  ${appleGreen('✓')} ${textSecondary('Updated tunnel ID in existing profile.')}`)
+    treeItem(true, 'Tunnel ID added to profile:', displayPath(profilePath))
   }
 
-  // 5. Server build
+  // Compile if needed
   if (!state.dist.exists) {
-    line(`  ${appleCyan('●')} ${textSecondary('Building and deploying server runtime bundle...')}`)
-    const repo = PKG_ROOT
-    if (!existsSync(join(repo, 'package.json'))) {
-      line(`  ${appleRed('✗')} ${textSecondary('Package root not found to build server.')}`)
+    line(cGuide('│  ') + cGray('Compiling server executable (npm run build)...'))
+    const bld = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
+    if (bld.status !== 0) {
+      line(cGuide('│  ') + cRed('✖ ') + cGray('Compilation failed. Please fix errors and retry.'))
       return 1
     }
-    const build = spawnSync('npm', ['run', 'build'], { cwd: repo, stdio: 'inherit', timeout: 300000 })
-    if (build.status !== 0) {
-      line(`  ${appleRed('✗')} ${textSecondary('Build failed. Check errors above and try again.')}`)
-      return 1
-    }
-    spawnSync('node', [join(repo, 'scripts/deploy-local.mjs')], { cwd: repo, stdio: 'inherit', timeout: 120000 })
-    line(`  ${appleGreen('✓')} ${textSecondary('Server bundle compiled and deployed.')}`)
+    spawnSync('node', [join(PKG_ROOT, 'scripts/deploy-local.mjs')], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 60000 })
+    treeItem(true, 'Server runtime bundle:', 'Compiled & deployed')
   }
 
-  // 6. Services & Launchd
-  line(`  ${appleCyan('●')} ${textSecondary('Configuring launchd background services...')}`)
-  const current = await collectState()
-  const jobs = ensureJobs(current)
-  for (const path of jobs.created) line(`  ${appleGreen('✓')} ${textSecondary(`Created ${displayPath(path)}`)}`)
+  // Register daemons
+  const curr = await collectState()
+  const jobs = ensureJobs(curr)
+  for (const p of jobs.created) treeItem(true, 'Launchd daemon registered:', displayPath(p))
   if (jobs.error) {
-    line(`  ${appleRed('✗')} ${textSecondary(jobs.error)}`)
+    line(cGuide('│  ') + cRed('✖ ') + cGray(jobs.error))
     return 1
   }
 
+  // Start & Bring up
   const fresh = await collectState()
   await bringUp(fresh.jobs, fresh.profile, withSpinner)
 
   const final = await collectState()
-  gap()
-  if (!final.server.healthy || !final.tunnel.ready) {
-    card(
-      appleRed(bold('SETUP INCOMPLETE')),
-      'SERVICES UNRESPONSIVE',
-      [
-        textSecondary(`Server status: ${final.server.healthy ? 'answering' : 'offline'}`),
-        textSecondary(`Tunnel status: ${final.tunnel.ready ? 'connected' : trimTo(final.tunnel.body, 40)}`),
-        '',
-        `Run ${codeSnippet('chat-unleashed doctor')} to inspect the failing component.`
-      ],
-      width,
-      borderWarn
-    )
+  if (final.server.healthy && final.tunnel.ready) {
+    treeItem(true, 'MCP Server:', `Live with ${final.server.tools ?? '?'} tools online on port 3344`)
+    treeItem(true, 'OpenAI Tunnel:', 'Connected & ready on port 8080')
+    treeFooter('Setup complete! Chat Unleashed is running and ready for ChatGPT.', true)
+    connectorGuide(final)
+    return 0
+  } else {
+    treeItem(final.server.healthy, 'MCP Server:', final.server.healthy ? 'Online' : 'Offline')
+    treeItem(final.tunnel.ready, 'OpenAI Tunnel:', final.tunnel.ready ? 'Connected' : 'Offline')
+    treeFooter('Services did not become ready. Run `chat-unleashed doctor` for details.', false)
     return 1
   }
-
-  card(
-    appleGreen(bold('SETUP COMPLETE & SERVICES RUNNING!')),
-    'ONLINE',
-    [
-      `${textSecondary('MCP Server: ')}${appleGreen(`${final.server.tools ?? '?'} tools online`)} ${textSecondary(`at ${hostOf(final.server.url)}`)}`,
-      `${textSecondary('OpenAI Tunnel: ')}${appleGreen('Ready & connected')}`
-    ],
-    width
-  )
-  gap()
-  connectorGuide(final)
-  gap()
-  return 0
 }
 
+// ============================================================================
+// Service Lifecycle (start, stop, restart, logs, status)
+// ============================================================================
 function stopServices(state) {
   for (const job of [state.jobs.server, state.jobs.tunnel]) {
     if (!job) continue
     spawnSync('launchctl', ['bootout', `gui/${UID}/${job.label}`], { encoding: 'utf8', timeout: 5000 })
-    line(`  ${appleOrange('●')} ${textSecondary(`Stopped service ${job.label}`)}`)
+    line(cGray('  Stopped ') + cWhite(job.label))
   }
 }
 
 async function startCommand(restart) {
-  renderBanner()
-  line(`  ${appleBlue(bold(restart ? 'RESTARTING SERVICES' : 'STARTING SERVICES'))}`)
+  gap()
+  line(cWhite(restart ? ' Restarting Services...' : ' Starting Services...'))
   gap()
   let state = await collectState()
   if (restart) {
     stopServices(state)
-    await new Promise((resolve) => setTimeout(resolve, 900))
+    await new Promise((resolve) => setTimeout(resolve, 800))
     state = await collectState()
   }
   const jobs = ensureJobs(state)
-  for (const path of jobs.created) line(`  ${appleGreen('✓')} ${textSecondary(`Wrote ${displayPath(path)}`)}`)
+  for (const p of jobs.created) line(cGreen('✔ ') + cGray(`Created ${displayPath(p)}`))
   if (jobs.error) {
-    line(`  ${appleRed('✗')} ${textSecondary(jobs.error)}`)
+    line(cRed('✖ ') + cGray(jobs.error))
     return 1
   }
+
   state = await collectState()
   await bringUp(state.jobs, state.profile, withSpinner)
   const final = await collectState()
   gap()
-  if (!final.server.healthy || !final.tunnel.ready) {
-    card(
-      appleRed(bold('STARTUP FAILED')),
-      'OFFLINE',
-      [
-        `${textSecondary('Server: ')}${final.server.healthy ? appleGreen('online') : appleRed('no answer')}`,
-        `${textSecondary('Tunnel: ')}${final.tunnel.ready ? appleGreen('ready') : appleRed(trimTo(final.tunnel.body, 30))}`,
-        '',
-        `Run ${codeSnippet('chat-unleashed logs tunnel')} to inspect daemon logs.`
-      ],
-      columns(),
-      borderWarn
-    )
+
+  if (final.server.healthy && final.tunnel.ready) {
+    line(cGreen('✔ All services running and operational!'))
+    line(`  ${cGray('MCP Server:')} ${cGreen(`${final.server.tools ?? '?'} tools online`)} ${cGray(`(${final.server.url})`)}`)
+    line(`  ${cGray('Tunnel:')}     ${cGreen('Connected & ready')} ${cGray(`(${final.tunnel.url})`)}`)
+    gap()
+    return 0
+  } else {
+    line(cRed('✖ Services did not come up completely.'))
+    line(`  ${cGray('Server:')} ${final.server.healthy ? cGreen('online') : cRed('offline')}`)
+    line(`  ${cGray('Tunnel:')} ${final.tunnel.ready ? cGreen('ready') : cRed('offline')}`)
+    line(cGray('  Run `chat-unleashed doctor` to inspect causes.'))
+    gap()
     return 1
   }
-  card(
-    appleGreen(bold('ALL SERVICES STARTED')),
-    'ONLINE',
-    [
-      `${textSecondary('MCP Server: ')}${appleGreen(`${final.server.tools ?? '?'} tools online`)} ${textSecondary(`(${hostOf(final.server.url)})`)}`,
-      `${textSecondary('OpenAI Tunnel: ')}${appleGreen('Ready & connected')}`
-    ],
-    columns()
-  )
-  gap()
-  return 0
 }
 
 function showLogs(which) {
-  renderBanner()
+  gap()
   const logs = {
     server: join(LOG_DIR, 'server-http.log'),
     tunnel: join(LOG_DIR, 'tunnel-daemon.log'),
@@ -1288,10 +1017,11 @@ function showLogs(which) {
   }
   const path = logs[which] || logs.server
   if (!existsSync(path)) {
-    line(`  ${appleOrange('▲')} ${textSecondary(`No log file at ${displayPath(path)} yet.`)}`)
+    line(cYellow('▲ ') + cGray(`No log file found at ${displayPath(path)} yet.`))
+    gap()
     return 1
   }
-  line(`  ${appleCyan(bold('STREAMING LOG:'))} ${textWhite(displayPath(path))} ${textSecondary('(Press Control-C to exit)')}`)
+  line(cWhite('Streaming log: ') + cBlue(displayPath(path)) + cGray(' · Press Control-C to stop'))
   gap()
   const tail = spawn('tail', ['-n', '40', '-f', path], { stdio: 'inherit' })
   tail.on('exit', (code) => process.exit(code ?? 0))
@@ -1314,21 +1044,18 @@ function statusLine() {
       }, null, 2) + '\n')
       return state.server.healthy && state.tunnel.ready ? 0 : 1
     }
-    const mark = state.server.healthy && state.tunnel.ready ? appleGreen('●') : appleRed('✗')
+    const mark = state.server.healthy && state.tunnel.ready ? cGreen('●') : cRed('✖')
     const parts = [
-      `server ${state.server.healthy ? appleGreen(`${state.server.tools ?? '?'} tools`) : appleRed('down')}`,
-      `tunnel ${state.tunnel.ready ? appleGreen('ready') : appleRed('down')}`
+      `server ${state.server.healthy ? cGreen(`${state.server.tools ?? '?'} tools`) : cRed('down')}`,
+      `tunnel ${state.tunnel.ready ? cGreen('ready') : cRed('down')}`
     ]
-    line(`${mark} ${textWhite(parts.join(` ${textTertiary('·')} `))}`)
+    line(`${mark} ${cWhite(parts.join(cGray(' · ')))} ${cGray(`(${DISPLAY_VERSION})`)}`)
     return state.server.healthy && state.tunnel.ready ? 0 : 1
   })
 }
 
 // ============================================================================
-// Help / Command Palette Screen
-// ============================================================================
-// ============================================================================
-// Update Command (Pull upstream, Recompile, Deploy & Restart)
+// Update Command (Standard CLI Updater)
 // ============================================================================
 async function updateCommand() {
   const isCheckOnly = flags.has('--check')
@@ -1336,237 +1063,164 @@ async function updateCommand() {
   const isStage = flags.has('--stage')
   const isStatus = flags.has('--status')
   const isCancel = flags.has('--cancel')
-  const width = columns()
 
-  renderBanner()
-
-  // Deferred update sub-actions
   if (isStatus) {
-    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'status'], {
-      encoding: 'utf8',
-      cwd: PKG_ROOT,
-      timeout: 10000
-    })
-    const output = (res.stdout || res.stderr || '').trim()
-    card(appleCyan(bold('DEFERRED UPDATE STATUS')), 'STAGE', [
-      output || 'No deferred update currently pending.'
-    ], width)
-    gap()
-    return res.status === 0 ? 0 : 1
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'status'], { encoding: 'utf8', cwd: PKG_ROOT })
+    treeInfo((res.stdout || res.stderr || '').trim() || 'No deferred update currently pending.')
+    treeFooter('Status check complete.', true)
+    return 0
   }
 
   if (isCancel) {
-    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'cancel'], {
-      encoding: 'utf8',
-      cwd: PKG_ROOT,
-      timeout: 10000
-    })
-    const output = (res.stdout || res.stderr || '').trim()
-    card(appleOrange(bold('DEFERRED UPDATE CANCELLED')), 'CANCEL', [
-      output || 'Cancelled any pending deferred update.'
-    ], width)
-    gap()
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'cancel'], { encoding: 'utf8', cwd: PKG_ROOT })
+    treeInfo((res.stdout || res.stderr || '').trim() || 'Cancelled any pending deferred update.')
+    treeFooter('Deferred update cancelled.', true)
     return 0
   }
 
   if (isStage) {
-    line(`  ${appleCyan('●')} ${textSecondary('Compiling and staging candidate bundle for deferred update...')}`)
-    const build = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
-    if (build.status !== 0) {
-      line(`  ${appleRed('✗')} ${textSecondary('Build failed. Fix errors above before staging.')}`)
+    line(cGuide('│  ') + cGray('Compiling candidate bundle...'))
+    const bld = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
+    if (bld.status !== 0) {
+      treeFooter('Build failed. Could not stage update.', false)
       return 1
     }
-    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'stage'], {
-      encoding: 'utf8',
-      cwd: PKG_ROOT,
-      timeout: 15000
-    })
-    const output = (res.stdout || res.stderr || '').trim()
-    card(appleGreen(bold('UPDATE STAGED (DEFERRED)')), 'STAGED', [
-      textSecondary(output || 'Bundle staged. Will automatically switch after 20 minutes of no tool activity.'),
-      '',
-      `Check status with: ${codeSnippet('chat-unleashed update --status')}`
-    ], width)
-    gap()
-    return res.status === 0 ? 0 : 1
+    const res = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deferred-update.mjs'), 'stage'], { encoding: 'utf8', cwd: PKG_ROOT })
+    treeInfo((res.stdout || res.stderr || '').trim())
+    treeFooter('Update staged! Will switch automatically after 20 minutes of no tool activity.', true)
+    return 0
   }
 
-  // Standard git-based update
   const isGit = existsSync(join(PKG_ROOT, '.git'))
   if (!isGit) {
-    card(appleOrange(bold('GIT REPOSITORY NOT FOUND')), 'MANUAL UPDATE', [
-      textSecondary('This installation was not cloned from a git repository.'),
-      '',
-      `To update manually, run: ${codeSnippet('npm install -g local-agent-mcp@latest')}`
-    ], width, borderWarn)
-    gap()
+    treeInfo('This installation was not cloned from a git repository.')
+    treeInfo('To update manually, run: npm install -g local-agent-mcp@latest')
+    treeFooter('Git repository not found.', false)
     return 1
   }
 
-  line(`  ${appleBlue(bold('✦ CHECKING FOR UPDATES'))}`)
-  await withSpinner('Fetching latest commits from GitHub', () => {
+  await withSpinner('Checking GitHub for upstream commits', () => {
     spawnSync('git', ['fetch', 'origin', 'main', '--quiet'], { cwd: PKG_ROOT, encoding: 'utf8', timeout: 20000 })
   })
+  treeHeader('Chat Unleashed Update', 'Software Maintenance')
+  treeStep(1, 2, 'Checking for Updates')
 
   const head = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
   const remote = (spawnSync('git', ['rev-parse', '--short', 'origin/main'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
   const behindCount = parseInt((spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '0').trim(), 10) || 0
 
+  treeItem(true, 'Active Version:', DISPLAY_VERSION)
+  treeItem(true, 'Current Commit:', head)
+
   if (isCheckOnly) {
     if (behindCount === 0) {
-      card(appleGreen(bold('✦ CHAT UNLEASHED IS UP TO DATE')), 'LATEST', [
-        `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
-        `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
-        `${textSecondary('Remote Status:   ')}${appleGreen('Synchronized with origin/main')}`,
-        '',
-        textSecondary('No new commits found upstream.')
-      ], width)
+      treeItem(true, 'Remote Status:', 'Up to date with origin/main')
+      treeFooter('You are running the latest version.', true)
     } else {
-      const commitLog = (spawnSync('git', ['log', 'HEAD..origin/main', '--pretty=format:  • %h %s (%cr)', '-n', '5'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
-      card(appleCyan(bold('✦ UPDATE AVAILABLE')), `${behindCount} NEW`, [
-        `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
-        `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
-        `${textSecondary('Remote Commit:   ')}${appleGreen(remote)} (${behindCount} commit${behindCount > 1 ? 's' : ''} behind)`,
-        '',
-        textWhite('Incoming Changes:'),
-        commitLog,
-        '',
-        `Execute: ${codeSnippet('chat-unleashed update')}`
-      ], width, borderActive)
+      treeItem(false, 'Remote Status:', `${behindCount} new commit${behindCount > 1 ? 's' : ''} available on origin/main (${remote})`)
+      const commitLog = (spawnSync('git', ['log', 'HEAD..origin/main', '--pretty=format:%h %s (%cr)', '-n', '5'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
+      line(cGuide('│'))
+      treeInfo('Incoming commits:')
+      for (const cl of commitLog.split('\n')) line(cGuide('│     ') + cWhite('• ' + cl))
+      treeFooter('Update available! Run `chat-unleashed update` to apply.', true)
     }
-    gap()
     return 0
   }
 
   if (behindCount === 0 && !isForce) {
-    card(appleGreen(bold('✦ CHAT UNLEASHED IS UP TO DATE')), 'LATEST', [
-      `${textSecondary('Active Version:  ')}${textWhite(DISPLAY_VERSION)}`,
-      `${textSecondary('Current Commit:  ')}${textWhite(head)}`,
-      `${textSecondary('Remote Status:   ')}${appleGreen('Synchronized with origin/main')}`,
-      '',
-      textSecondary('You are already running the latest version.'),
-      `To force a rebuild and service redeployment, run: ${codeSnippet('chat-unleashed update --force')}`
-    ], width)
-    gap()
+    treeItem(true, 'Remote Status:', 'Up to date with origin/main')
+    treeFooter('Already on latest version! (Use --force to rebuild anyway)', true)
     return 0
   }
 
-  // Execute update
-  line(`  ${appleBlue(bold('⚙ EXECUTING CHAT UNLEASHED UPDATE'))}`)
-  gap()
-
-  // Step 1: Pull commits
+  line(cGuide('│'))
+  treeStep(2, 2, 'Applying Updates')
   if (behindCount > 0) {
-    line(`  ${appleCyan('[ 1/5 ]')} ${textSecondary('Pulling latest commits from origin/main...')}`)
+    line(cGuide('│  ') + cGray('Pulling changes from GitHub...'))
     const pull = spawnSync('git', ['pull', 'origin', 'main'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 30000 })
     if (pull.status !== 0) {
-      line(`  ${appleRed('✗')} ${textSecondary('git pull failed. Resolve merge conflicts before updating.')}`)
+      treeFooter('git pull failed. Resolve git conflicts before updating.', false)
       return 1
     }
-  } else {
-    line(`  ${appleCyan('[ 1/5 ]')} ${textSecondary(`Already at latest commit (${head}), continuing with force rebuild...`)}`)
+    treeItem(true, 'Git pull:', 'Successfully synchronized')
   }
 
-  // Step 2: npm install
-  line(`  ${appleCyan('[ 2/5 ]')} ${textSecondary('Updating npm dependencies...')}`)
-  const install = spawnSync('npm', ['install', '--prefer-offline'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 120000 })
-  if (install.status !== 0) {
-    line(`  ${appleRed('✗')} ${textSecondary('npm install failed. Fix dependency issues and re-run update.')}`)
+  line(cGuide('│  ') + cGray('Updating dependencies...'))
+  spawnSync('npm', ['install', '--prefer-offline'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 120000 })
+
+  line(cGuide('│  ') + cGray('Compiling standalone executable...'))
+  const bld = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
+  if (bld.status !== 0) {
+    treeFooter('Compilation failed.', false)
     return 1
   }
+  treeItem(true, 'Compilation:', 'New bundle built')
 
-  // Step 3: compile bundle
-  line(`  ${appleCyan('[ 3/5 ]')} ${textSecondary('Compiling TypeScript & bundling standalone executable...')}`)
-  const build = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
-  if (build.status !== 0) {
-    line(`  ${appleRed('✗')} ${textSecondary('Build failed. Fix build errors and re-run update.')}`)
-    return 1
-  }
+  spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deploy-local.mjs')], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 60000 })
+  treeItem(true, 'Deployment:', 'Deployed to runtime')
 
-  // Step 4: deploy
-  line(`  ${appleCyan('[ 4/5 ]')} ${textSecondary('Deploying runtime to ~/.local/share/local-agent-mcp...')}`)
-  const deploy = spawnSync(process.execPath, [join(PKG_ROOT, 'scripts/deploy-local.mjs')], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 60000 })
-  if (deploy.status !== 0) {
-    line(`  ${appleRed('✗')} ${textSecondary('Local deployment failed.')}`)
-    return 1
-  }
-
-  // Step 5: restart & verify
-  line(`  ${appleCyan('[ 5/5 ]')} ${textSecondary('Restarting background daemons and verifying health...')}`)
-  const currentState = await collectState()
-  stopServices(currentState)
+  line(cGuide('│  ') + cGray('Restarting background services...'))
+  const curr = await collectState()
+  stopServices(curr)
   await new Promise((resolve) => setTimeout(resolve, 800))
   const fresh = await collectState()
   ensureJobs(fresh)
   await bringUp(fresh.jobs, fresh.profile, withSpinner)
 
   const final = await collectState()
-  const newHead = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: PKG_ROOT, encoding: 'utf8' }).stdout || '').trim()
-  gap()
-
   if (final.server.healthy && final.tunnel.ready) {
-    card(appleGreen(bold(' UPDATE COMPLETE & SERVICES ONLINE')), 'SUCCESS', [
-      `${textSecondary('Active Version:   ')}${textWhite(DISPLAY_VERSION)}`,
-      `${textSecondary('Deployed Commit:  ')}${textWhite(newHead)}`,
-      `${textSecondary('MCP Server:       ')}${appleGreen(`${final.server.tools ?? '?'} tools online`)} ${textSecondary(`at ${hostOf(final.server.url)}`)}`,
-      `${textSecondary('OpenAI Tunnel:    ')}${appleGreen('Connected & ready')}`
-    ], width)
+    treeItem(true, 'Services:', 'Live and responding')
+    treeFooter('Update complete! Chat Unleashed is running latest version.', true)
+    return 0
   } else {
-    card(appleOrange(bold('UPDATE DEPLOYED (CHECK SERVICES)')), 'ATTENTION', [
-      `${textSecondary('Deployed Commit:  ')}${textWhite(newHead)}`,
-      `${textSecondary('Server status:    ')}${final.server.healthy ? appleGreen('online') : appleRed('offline')}`,
-      `${textSecondary('Tunnel status:    ')}${final.tunnel.ready ? appleGreen('ready') : appleRed(trimTo(final.tunnel.body, 30))}`,
-      '',
-      `Run ${codeSnippet('chat-unleashed doctor')} to inspect the service status.`
-    ], width, borderWarn)
+    treeFooter('Update finished but services need inspection. Run `chat-unleashed doctor`.', false)
+    return 1
   }
-  gap()
-  return 0
 }
 
+// ============================================================================
+// Help / Command Reference (Standard CLI Manual)
+// ============================================================================
 function help() {
-  const width = columns()
-  renderBanner()
-
-  card(
-    appleCyan(bold('⌘ COMMAND PALETTE')),
-    'OVERVIEW',
-    [
-      textSecondary('Usage: chat-unleashed [command] [options]'),
-      '',
-      textWhite('CORE WORKFLOWS:'),
-      `  ${appleBlue(padEnd('setup', 18))}${textSecondary('Interactive setup wizard (client, profile, key, jobs)')}`,
-      `  ${appleBlue(padEnd('connect', 18))}${textSecondary('Display exact form values to paste into ChatGPT')}`,
-      `  ${appleBlue(padEnd('doctor', 18))}${textSecondary('Run complete diagnostic health checks on all systems')}`,
-      `  ${appleBlue(padEnd('update', 18))}${textSecondary('Check for updates, pull changes, recompile & restart')}`,
-      `  ${appleBlue(padEnd('(none)', 18))}${textSecondary('Open the visual dashboard and status summary')}`,
-      '',
-      textWhite('SERVICE MANAGEMENT:'),
-      `  ${appleBlue(padEnd('start', 18))}${textSecondary('Load and start MCP server and tunnel launchd jobs')}`,
-      `  ${appleBlue(padEnd('stop', 18))}${textSecondary('Safely shut down background daemons')}`,
-      `  ${appleBlue(padEnd('restart', 18))}${textSecondary('Restart both services and verify readiness')}`,
-      `  ${appleBlue(padEnd('status', 18))}${textSecondary('One-line summary status (JSON with --json)')}`,
-      `  ${appleBlue(padEnd('logs [target]', 18))}${textSecondary('Stream live logs: server, tunnel, or launchd')}`
-    ],
-    width
-  )
   gap()
-
-  card(
-    appleIndigo(bold('⚙ FLAGS & OPTIONS')),
-    'REFERENCE',
-    [
-      `  ${textWhite(padEnd('--profile <name>', 20))}${textSecondary('Select tunnel profile (default: local-mac)')}`,
-      `  ${textWhite(padEnd('--json', 20))}${textSecondary('Format output as machine-readable JSON')}`,
-      `  ${textWhite(padEnd('--check', 20))}${textSecondary('Check for updates or dry-run setup without changes')}`,
-      `  ${textWhite(padEnd('--force', 20))}${textSecondary('With update: force rebuild, redeploy and restart')}`,
-      `  ${textWhite(padEnd('--stage', 20))}${textSecondary('With update: stage bundle for deferred quiet update')}`,
-      `  ${textWhite(padEnd('--yes', 20))}${textSecondary('Automatically accept prompts in setup')}`,
-      `  ${textWhite(padEnd('--no-color', 20))}${textSecondary('Disable ANSI colors and box decorations')}`,
-      `  ${textWhite(padEnd('--verbose', 20))}${textSecondary('Display timing and probe diagnostics')}`
-    ],
-    width
-  )
+  line(cWhite('Chat Unleashed') + '  ' + cBlue(`[ ${DISPLAY_VERSION} ]`))
+  line(cGray('Local MCP reach for ChatGPT Chat on Apple Silicon Mac.'))
+  gap()
+  line(cWhite('Usage:'))
+  line('  ' + cBlue('chat-unleashed') + cGray(' [command] [options]'))
+  gap()
+  line(cWhite('Commands:'))
+  const cmds = [
+    ['(none)', 'Display system status and recommended action'],
+    ['setup', 'Step-by-step interactive onboarding wizard'],
+    ['connect', 'Display ChatGPT connector form values to copy'],
+    ['doctor', 'Run system diagnostics and verify connectivity'],
+    ['update', 'Check for updates, pull changes, and recompile'],
+    ['status', 'Print one-line status summary (JSON with --json)'],
+    ['start', 'Start background MCP server & tunnel services'],
+    ['stop', 'Stop background services'],
+    ['restart', 'Restart both services and verify readiness'],
+    ['logs [target]', 'Stream live logs (server, tunnel, or launchd)'],
+    ['help', 'Show this help screen']
+  ]
+  for (const [name, desc] of cmds) {
+    line(`  ${cBlue(name.padEnd(16))}${cGray(desc)}`)
+  }
+  gap()
+  line(cWhite('Options:'))
+  const opts = [
+    ['--profile <name>', 'Select tunnel profile (default: local-mac)'],
+    ['--check', 'Inspect without modifying (with setup or update)'],
+    ['--force', 'Force rebuild and redeploy (with update)'],
+    ['--open', 'Open links in default browser (with connect)'],
+    ['--yes', 'Automatically accept prompts during setup'],
+    ['--json', 'Format output as machine-readable JSON'],
+    ['--no-color', 'Disable ANSI colors and decorations'],
+    ['--verbose', 'Show detailed diagnostic timings']
+  ]
+  for (const [name, desc] of opts) {
+    line(`  ${cWhite(name.padEnd(18))}${cGray(desc)}`)
+  }
   gap()
 }
 
@@ -1576,7 +1230,7 @@ function help() {
 async function main() {
   switch (command) {
     case 'home': {
-      const state = await withSpinner('Inspecting system state', collectState)
+      const state = await withSpinner('Inspecting system status', collectState)
       renderDashboard(state)
       return 0
     }
@@ -1611,9 +1265,9 @@ async function main() {
       help()
       return 0
     default:
-      renderBanner()
-      line(`  ${appleOrange('▲')} ${textWhite(`Unknown command "${command}".`)}`)
-      line(`  ${textSecondary('Run chat-unleashed help to view available commands.')}`)
+      gap()
+      line(cRed('✖ ') + cWhite(`Unknown command "${command}".`))
+      line(cGray('  Run `chat-unleashed help` to see all available commands.'))
       gap()
       return 2
   }
