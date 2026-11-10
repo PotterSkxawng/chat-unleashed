@@ -26,7 +26,7 @@ export class MiniSocket {
 
   private constructor(socket: net.Socket) {
     this.socket = socket;
-    socket.on("data", (data) => this.read(data));
+    socket.on("data", (data) => this.read(Buffer.from(data)));
     socket.on("close", () => this.shutdown());
     socket.on("error", (error) => this.fail(error));
   }

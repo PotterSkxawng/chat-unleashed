@@ -1,6 +1,6 @@
 {
   "name": "local-agent-mcp",
-  "version": "0.2.0",
+  "version": "0.2.0-public-beta.1",
   "private": true,
   "description": "Chat Unleashed: a local MCP server that lets ChatGPT Chat act on an Apple Silicon Mac, with shell, files, native macOS UI, browser control, durable tasks and deep iWork automation.",
   "type": "module",
@@ -32,7 +32,7 @@
     "build:stress-fixtures": "esbuild src/store.ts src/large-text.ts src/exec.ts src/coding.ts src/tasks.ts src/capacity.ts src/skills.ts --bundle --platform=node --format=esm --target=node20 --outdir=.stress --log-level=warning",
     "stress:files": "node scripts/stress-files.mjs",
     "stress:all": "npm run stress:scale --silent && npm run stress:http --silent && npm run stress:files --silent",
-    "validate:release": "npm run build --silent && npm run check:public --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent",
+    "validate:release": "npm run clean:fixtures --silent && npm run build --silent && npm run check:public --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run clean:fixtures --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent",
     "install:local": "npm run build && npm run deploy:local",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate:release",
@@ -44,16 +44,17 @@
     "update:status": "node scripts/deferred-update.mjs status",
     "update:check": "node scripts/deferred-update.mjs check",
     "update:cancel": "node scripts/deferred-update.mjs cancel",
-    "test:updater": "node scripts/test-deferred-update.mjs"
+    "test:updater": "node scripts/test-deferred-update.mjs",
+    "clean:fixtures": "node -e \"for (const p of ['.test','.stress']) require('fs').rmSync(p,{recursive:true,force:true})\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22.20.5",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "license": "MIT",
   "os": [

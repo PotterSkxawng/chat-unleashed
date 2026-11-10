@@ -351,7 +351,7 @@ export function createServer(): McpServer {
           .max(3600)
           .optional()
           .describe("Kill the command after this many seconds (default 60, max 3600)."),
-        env: z.record(z.string()).optional().describe("Extra environment variables for this command."),
+        env: z.record(z.string(), z.string()).optional().describe("Extra environment variables for this command."),
         maxOutputKB: z.number().int().min(16).max(5120).optional().describe("Per stdout/stderr capture budget in KiB (default 200). Head and tail are preserved when truncated."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -3197,7 +3197,7 @@ export function createServer(): McpServer {
       action: z.enum(["get", "set", "unset", "patch", "reset", "path", "schema", "reveal"]),
       key: z.string().optional().describe("Dot path, e.g. 'paths.screenshots' or 'shell.defaultTimeoutSeconds'."),
       value: z.any().optional().describe("set: the new value (string, number, boolean, list or object)."),
-      patch: z.record(z.any()).optional().describe("patch: an object merged into the settings."),
+      patch: z.record(z.string(), z.any()).optional().describe("patch: an object merged into the settings."),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     async (args) => {
@@ -3285,7 +3285,7 @@ export function createServer(): McpServer {
     pattern: z.string().optional().describe("Regex for windowTitle, uiText or shell output."),
     app: z.string().optional().describe("windowTitle/uiText: limit to this app."),
     tool: z.string().optional().describe("tool: registered tool name to call."),
-    args: z.record(z.any()).optional().describe("tool: arguments for that tool."),
+    args: z.record(z.string(), z.any()).optional().describe("tool: arguments for that tool."),
     expect: z.string().optional().describe("tool/shell: extra regex the result must match."),
     until: z.lazy(() => checkSchema).optional().describe("wait: the condition to poll."),
     seconds: z.number().optional().describe("wait: how long to poll (default 30)."),
@@ -3294,7 +3294,7 @@ export function createServer(): McpServer {
   const stepSchema = z.object({
     text: z.string().describe("What this step does, in plain words."),
     tool: z.string().optional().describe("Registered tool name, or shell, or sleep."),
-    args: z.record(z.any()).optional().describe("Arguments for that tool. For shell use {cmd, cwd}."),
+    args: z.record(z.string(), z.any()).optional().describe("Arguments for that tool. For shell use {cmd, cwd}."),
     verify: checkSchema.optional().describe("How to prove the step worked. Without it the step ends unverified."),
     dependsOn: z.array(z.string()).optional().describe("Step ids that must finish first (defaults to the previous step)."),
     retries: z.number().int().min(0).max(10).optional().describe("How many times to re-check after a failure."),
@@ -3856,7 +3856,7 @@ ${output.slice(0, 4000)}` };
       notes: z.string().optional().describe("For save: anything the next run should know."),
       text: z.string().optional().describe("For match: the request to route."),
       task: z.string().optional().describe("For report: the finished task id."),
-      vars: z.record(z.union([z.string(), z.number(), z.boolean()])).optional().describe("For compile: values for {{variable}} placeholders in the saved workflow."),
+      vars: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("For compile: values for {{variable}} placeholders in the saved workflow."),
       limit: z.number().int().min(1).max(500).optional().describe("For match: how many candidates (default 5). For list: maximum skills shown (default 100)."),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -4097,7 +4097,7 @@ ${output.slice(0, 4000)}` };
       step: z.string().optional().describe("Step id the action applies to (or the step to insert after)."),
       text: z.string().optional().describe("note: the note. insert: what the new step does."),
       tool: z.string().optional().describe("insert: tool name."),
-      args: z.record(z.any()).optional().describe("insert: tool arguments."),
+      args: z.record(z.string(), z.any()).optional().describe("insert: tool arguments."),
       verify: checkSchema.optional().describe("insert: how the new step is proven."),
       approval: z.boolean().optional().describe("insert: gate the new step."),
     },
