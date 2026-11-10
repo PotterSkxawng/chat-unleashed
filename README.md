@@ -49,7 +49,14 @@ ChatGPT -> OpenAI tunnel -> tunnel-client -> http://127.0.0.1:3344/mcp
 2. Create a runtime API key at [API keys](https://platform.openai.com/settings/organization/api-keys) with Tunnels Read and Use. It is shown once.
 3. Run `chat-unleashed setup` in a terminal and paste both. The key input is hidden and is never echoed.
 4. Setup writes the tunnel profile for this server, stores the key at mode `0600`, installs the launchd jobs, starts the server, waits for the MCP handshake, starts the tunnel, and checks that the tunnel reports ready.
-5. Run `chat-unleashed connect --open` for the ChatGPT side: turn on Developer mode, add a custom MCP server, choose Tunnel, paste the ID, save, then start a new chat with the app selected.
+5. Run `chat-unleashed connect --open` and fill the connector form with these values:
+   - Name: `Chat Unleashed`
+   - Description: `Runs commands, reads and writes files, looks at the screen and drives apps on my Mac. Use it when a request needs work done on the local machine instead of only an answer.`
+   - Connection: `Tunnel`
+   - Tunnel: the ID from step 1
+   - Authentication: `None`. The runtime key stays inside the tunnel on this Mac; ChatGPT never gets a token for the server.
+
+   Save, refresh the tools in the connector details, then start a new chat and pick Chat Unleashed from the plus menu.
 6. Grant macOS permissions when a tool first needs them: Accessibility, Screen Recording, Automation per app, and optionally Full Disk Access.
 
 Chat is the surface this unlocks. Work and Codex act through the shared agentic allowance; Chat is not part of that pool today, so a chat that calls these tools gives you a local agent without spending it.

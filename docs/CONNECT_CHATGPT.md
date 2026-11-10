@@ -46,8 +46,22 @@ Run it again at any time. Every step that is already true is skipped. `--check` 
 1. Open chatgpt.com in a browser and sign in.
 2. Settings, Security and login, turn on Developer mode.
 3. Settings, Connectors (or Plugins), Add custom MCP server.
-4. Name it Chat Unleashed. Choose Tunnel as the connection, paste the tunnel ID, leave authentication at None, and save.
-5. Open a new chat, select the app from the composer with the plus button, and ask for something local, for example: "Use Chat Unleashed to list the files on my Desktop."
+4. Fill the form with these exact values.
+
+| Field | Value |
+| --- | --- |
+| Name | Chat Unleashed |
+| Description | Runs commands, reads and writes files, looks at the screen and drives apps on my Mac. Use it when a request needs work done on the local machine instead of only an answer. |
+| Connection | Tunnel |
+| Tunnel | the ID you copied in step 1 |
+| Authentication | None |
+
+Authentication is None because ChatGPT never authenticates to the server. The tunnel holds the runtime key on this Mac, and `tunnel-client` presents it to OpenAI. There is no OAuth client to register and no secret to paste into ChatGPT.
+
+If the form only offers a Server URL field, tunnels are not enabled for that workspace; the Tunnel option has to be present for this setup.
+
+5. Save, open the connector details and refresh tools so the app picks up the current tool list.
+6. Open a new chat, select the app from the composer with the plus button, and ask for something local, for example: "Use Chat Unleashed to list the files on my Desktop."
 
 `chat-unleashed connect` prints these steps with your tunnel ID, and `chat-unleashed connect --open` opens the three pages for you.
 

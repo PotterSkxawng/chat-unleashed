@@ -35,6 +35,10 @@ const HEALTH_URL_FALLBACK = 'http://127.0.0.1:8080'
 const TUNNELS_URL = 'https://platform.openai.com/settings/organization/tunnels'
 const KEYS_URL = 'https://platform.openai.com/settings/organization/api-keys'
 const CONNECTORS_URL = 'https://chatgpt.com/#settings/Connectors'
+const CONNECTOR_NAME = 'Chat Unleashed'
+const CONNECTOR_DESCRIPTION =
+  'Runs commands, reads and writes files, looks at the screen and drives apps on my Mac. ' +
+  'Use it when a request needs work done on the local machine instead of only an answer.'
 const TUNNEL_ID_RE = /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/
 
 const argv = process.argv.slice(2)
@@ -954,15 +958,21 @@ function connectorGuide(state) {
   section('ChatGPT')
   note('Chat is the chat surface. Work and Codex act and share the agentic allowance; this connector gives Chat the same local reach.')
   gap()
-  if (state?.profile?.tunnelId) {
-    line(`  ${sub(padEnd('Tunnel ID', 16))}${bold(state.profile.tunnelId)}`)
-    hint('Paste this ID into the connector screen.')
-  }
+  note('Fill the connector form with these exact values.')
+  gap()
+  line(`  ${sub(padEnd('Name', 18))}${bold(CONNECTOR_NAME)}`)
+  line(`  ${sub(padEnd('Description', 18))}${CONNECTOR_DESCRIPTION}`)
+  line(`  ${sub(padEnd('Connection', 18))}${bold('Tunnel')}`)
+  line(`  ${sub(padEnd('Tunnel', 18))}${state?.profile?.tunnelId ? bold(state.profile.tunnelId) : sub('run chat-unleashed setup first')}`)
+  line(`  ${sub(padEnd('Authentication', 18))}${bold('None')}`)
+  hint('None is correct: the tunnel carries the runtime key from this Mac. ChatGPT gets no token for the server.')
+  gap()
   note('1. Open chatgpt.com on the web and sign in.')
   note('2. Settings, Security and login, turn on Developer mode.')
   note('3. Settings, Connectors (or Plugins), Add custom MCP server.')
-  note('4. Name it Chat Unleashed, choose Tunnel, paste the ID above, save.')
-  note('5. Start a new chat, select the app from the composer, and ask for something local.')
+  note('4. Paste the five values above and save, then refresh tools in the connector details.')
+  note('5. Start a new chat, pick Chat Unleashed from the plus menu, and ask for something local.')
+  hint('If the form only offers a Server URL, tunnels are not enabled for that workspace. The Tunnel option must be there.')
   hint('The first write asks for approval. Remember applies to that conversation only.')
   gap()
   note(`Tunnels  ${TUNNELS_URL}`)
