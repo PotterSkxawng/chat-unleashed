@@ -12,7 +12,31 @@ The package is `local-agent-mcp`. The connector and the `chat-unleashed` command
 
 Tool activity is recorded as JSON lines in the per-user application-data directory under `logs/audit.log`.
 
-## Chat Unleashed
+## Quickstart: Clone, Build & Run
+
+Clone the repository and build the server executable right away:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/PotterSkxawng/chat-unleashed.git
+cd chat-unleashed
+
+# 2. Install dependencies and compile
+npm install
+npm run build
+
+# 3. Link CLI tool to your PATH
+npm link
+
+# 4. Run setup walkthrough
+chat-unleashed setup
+```
+
+The build script compiles TypeScript with `tsc` and bundles the standalone executable into `dist/index.js` using `esbuild`.
+
+---
+
+## Chat Unleashed CLI
 
 The connector is named **Chat Unleashed**, with **local mac** as its alias. The
 `chat-unleashed` command is the terminal front end for it. It reads the machine
@@ -20,10 +44,10 @@ before it claims anything: the launchd jobs, the tunnel profile, the env file,
 `/health`, `/readyz`, and a real MCP handshake.
 
 ```sh
-npm link                  # once, inside this checkout, to put it on PATH
 chat-unleashed            # what is running, and the one next step
 chat-unleashed setup      # guided install, skips every step already true
 chat-unleashed doctor     # every check, with the fix for each failure
+chat-unleashed connect    # prints exact connector settings for ChatGPT
 local-mac                 # the same tool under its alias
 ```
 
