@@ -25,11 +25,12 @@ cd chat-unleashed
 npm install
 npm run build
 
-# 3. Link CLI tool to your PATH
+# 3. Link CLI tool to your PATH (or run directly with npm run unleashed)
 npm link
 
 # 4. Run setup walkthrough
 chat-unleashed setup
+# (or: npm run unleashed -- setup)
 ```
 
 The build script compiles TypeScript with `tsc` and bundles the standalone executable into `dist/index.js` using `esbuild`.
