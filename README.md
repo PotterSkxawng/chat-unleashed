@@ -1,10 +1,10 @@
 # Chat Unleashed
 
-Chat Unleashed is a local MCP server that lets an agent use a Mac the way a person does: run
+Chat Unleashed is a local MCP server that lets ChatGPT Chat use a Mac the way a person does: run
 commands, read and write files, look at the screen, drive apps through their UI,
 and reach the everyday apps (browser, Calendar, Reminders, Notes, Contacts,
-Music). It works with any MCP client - ChatGPT desktop, Codex CLI/IDE, or your own
-app - and keeps every machine-specific detail on the machine.
+Music). It is built for Chat, reaches the Mac through an OpenAI Secure MCP Tunnel,
+and keeps every machine-specific detail on the machine.
 
 Chat is where most work starts, and on its own it cannot touch the Mac. Work and Codex can act on a machine, and both draw on the shared agentic allowance. This connector closes that gap: the chat you already use can read files, run commands, drive apps and finish the job instead of describing the steps. Chat is not part of that shared allowance today, and its thinking is still unlimited, so the local agent runs on the Chat you already use.
 

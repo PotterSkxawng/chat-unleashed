@@ -1,6 +1,6 @@
 // Proxy to Codex's own Computer Use MCP server (`cua_repl`).
 //
-// Rather than reimplementing screen control, we launch exactly the server ChatGPT/Codex
+// Rather than reimplementing screen control, we launch exactly the server ChatGPT
 // launches - configured by the installed `unified-computer-use` plugin's .mcp.json - and
 // forward tool calls to it. The tool definitions in ./cua-tools.json are a verbatim
 // snapshot of what that server advertises, so our tools/list matches Codex even before
@@ -105,7 +105,7 @@ function loadPluginConfig(): { config: PluginConfig; dir: string } {
   if (!dir) {
     throw new Error(
       `Computer Use plugin not found under ${pluginRoot()}. ` +
-        "Install/enable Computer Use in the ChatGPT/Codex desktop app first, " +
+        "Install/enable Computer Use in the ChatGPT desktop app first, " +
         "or point app_config computerUse.pluginDir at its directory.",
     );
   }

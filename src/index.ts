@@ -184,7 +184,7 @@ function parseArgs(argv: string[]): Cli {
     else if (arg === "--help" || arg === "-h") {
       process.stdout.write(
         [
-          "local-agent-mcp - local MCP server for a cloud agent",
+          "local-agent-mcp - local MCP server that lets ChatGPT Chat act on this Mac",
           "",
           "Usage:",
           "  local-agent-mcp                 serve over stdio (default)",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// chat-unleashed: setup and health for the local MCP server and its OpenAI tunnel.
+// chat-unleashed: setup and health for the ChatGPT Chat connector and its OpenAI tunnel.
 //
 // Everything here reads the machine as it is: launchd jobs, the tunnel profile,
 // the env file, and both HTTP surfaces. No step reports success it did not see.
@@ -28,7 +28,6 @@ const ENV_FILE = join(SHARE, '.env.tunnel')
 const LOG_DIR = join(SHARE, 'logs')
 const CLIENT_CONFIG = join(HOME, '.config/tunnel-client')
 const AGENTS_DIR = join(HOME, 'Library/LaunchAgents')
-const CODEX_PLUGIN = join(HOME, '.codex/plugins/cache/debug/tunnel-mcp/local')
 
 const DEFAULT_PROFILE = 'local-mac'
 const MCP_URL_FALLBACK = 'http://127.0.0.1:3344/mcp'
@@ -334,7 +333,6 @@ async function collectState() {
     jobs: { server: serverJob, tunnel: tunnelJob },
     server: { url: mcpUrl, healthy: mcp.ok, healthOk: health.ok, tools: mcp.tools, info: mcp },
     tunnel: { url: healthBase, ready: ready.ok && ready.text === 'ready', body: ready.text || 'no answer', status: ready.status },
-    agent: { installed: existsSync(CODEX_PLUGIN) },
     dist: { path: join(SHARE, 'dist/index.js'), exists: existsSync(join(SHARE, 'dist/index.js')) }
   }
 }
@@ -380,7 +378,7 @@ function renderDashboard(state) {
   const meta = `${sub('v' + VERSION)} ${faint('·')} ${sub('setup and health')}`
   const space = Math.max(2, width - vlen(product) - vlen(meta) - 2)
   line(`  ${product}${' '.repeat(space)}${meta}`)
-  line(`  ${sub('A local MCP server, carried to your agent through an OpenAI tunnel.')}`)
+  line(`  ${sub('A local MCP server, carried to ChatGPT Chat through an OpenAI tunnel.')}`)
 
   section('This Mac')
   row('macOS', `${state.platform.macOS || 'unknown'} ${faint('·')} ${state.platform.arch}`)
@@ -403,8 +401,6 @@ function renderDashboard(state) {
       ? `ready ${faint('·')} ${hostOf(state.tunnel.url)}`
       : `${trimTo(state.tunnel.body, 24)} ${faint('·')} ${hostOf(state.tunnel.url)}`,
     state.tunnel.ready ? 'ok' : 'bad')
-  row('Codex', state.agent.installed ? 'plugin installed' : 'plugin not installed, optional',
-    state.agent.installed ? 'ok' : 'idle')
 
   const next = nextStep(state)
   section('Next')
@@ -478,10 +474,6 @@ function checkList(state) {
     state.tunnel.ready ? `ready at ${state.tunnel.url}/readyz` : `Answers "${trimTo(state.tunnel.body, 40)}" at ${state.tunnel.url}/readyz.`,
     state.tunnel.ready ? null : 'chat-unleashed restart')
 
-  add('Codex', state.agent.installed ? 'ok' : 'warn',
-    state.agent.installed ? 'The Codex plugin is present.' : 'The Codex plugin is optional and not installed.',
-    state.agent.installed ? null : 'tunnel-client codex plugin install')
-
   return checks
 }
 
@@ -540,7 +532,6 @@ async function statusLine() {
       tunnelId: state.profile.tunnelId,
       server: { url: state.server.url, healthy: state.server.healthy, tools: state.server.tools },
       tunnel: { url: state.tunnel.url, ready: state.tunnel.ready, body: state.tunnel.body },
-      agent: state.agent.installed,
       next: next.command
     }, null, 2) + '\n')
     return state.server.healthy && state.tunnel.ready ? 0 : 1
@@ -1054,7 +1045,7 @@ function showLogs(which) {
 
 function help() {
   line(`  ${bold('chat')}${dim('-')}${bold('unleashed')} ${sub(VERSION)}`)
-  line(`  ${sub('Setup and health for the local MCP server and its OpenAI tunnel.')}`)
+  line(`  ${sub('Setup and health for the ChatGPT Chat connector and its OpenAI tunnel.')}`)
 
   section('Naming')
   line(`  ${padEnd('Connector', 20)}${sub('Chat Unleashed')}`)

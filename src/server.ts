@@ -308,7 +308,7 @@ export function createServer(): McpServer {
     { name: "local-agent-mcp", version: APP_VERSION },
     {
       instructions:
-        "Full-access tools for the host Mac. Every tool call is written to the per-user audit log. " +
+        "Chat Unleashed gives ChatGPT Chat full-access tools on the host Mac. Every tool call is written to the per-user audit log. " +
         "Use run_command for anything a dedicated tool does not cover, and pass cwd to carry working-directory state between commands. " +
         "Paths accept ~; relative paths resolve against the server's working directory. " +
         "Resolve optional developer tools from PATH instead of assuming a Homebrew prefix, Python version or package version. " +

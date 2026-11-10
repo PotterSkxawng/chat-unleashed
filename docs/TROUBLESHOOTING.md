@@ -22,7 +22,7 @@ tunnel-client doctor --profile local-mac --explain
 
 The HTTP health command assumes the documented default port. If a profile uses a different port, use that port. The tunnel health listener is separate from the MCP server; consult the profile's `health.listen_addr` setting. On a default setup, inspect `http://127.0.0.1:8080/health`. A running PID alone does not establish remote availability.
 
-If the tunnel profile references `env:CONTROL_PLANE_API_KEY`, the key must be present in **the environment of the tunnel process**, not just in an unrelated Terminal tab. A LaunchAgent and an interactive shell can have different environments. Inspect variable names and LaunchAgent configuration without printing credential values. Do not paste secrets or full environment files into support requests. Use a runtime credential intended for the tunnel; the optional Codex plugin is not required by ChatGPT.
+If the tunnel profile references `env:CONTROL_PLANE_API_KEY`, the key must be present in **the environment of the tunnel process**, not just in an unrelated Terminal tab. A LaunchAgent and an interactive shell can have different environments. Inspect variable names and LaunchAgent configuration without printing credential values. Do not paste secrets or full environment files into support requests. Use a runtime credential intended for the tunnel.
 
 If the `doctor` command reports a missing key only in Terminal, first check whether the managed tunnel is already healthy before modifying credentials or restarting it. Loading an environment file with `source` is not guaranteed to work if that file uses another variable name or is not shell syntax.
 
@@ -36,7 +36,7 @@ On the supported `tunnel-client`, stdio profiles may need:
 MCP_STDIO_SEND_INITIALIZED_NOTIFICATION=true
 ```
 
-This is a `tunnel-client` compatibility option, not a universal requirement for every MCP client or HTTP transport. Apply it to the environment that actually launches the tunnel. For a loopback HTTP MCP target, investigate HTTP request/session handling instead of enabling unrelated stdio flags.
+This is a `tunnel-client` compatibility option, not a universal requirement for MCP or HTTP transport. Apply it to the environment that actually launches the tunnel. For a loopback HTTP MCP target, investigate HTTP request/session handling instead of enabling unrelated stdio flags.
 
 ## Session terminated
 
