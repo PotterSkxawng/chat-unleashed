@@ -6,14 +6,16 @@ ChatGPT runs in the cloud. This server runs on your Mac and listens on loopback 
 ChatGPT -> OpenAI Secure MCP Tunnel -> tunnel-client -> http://127.0.0.1:3344/mcp
 ```
 
+## Why this exists
+
+Chat answers, but on its own it cannot act on your Mac. Work and Codex can act, and both draw on the shared agentic allowance. This connector gives Chat the same reach: with the app selected, a normal chat can call the local tools, read the results and keep going until the task is done. Chat is not part of that shared allowance today, and its thinking is still unlimited, so this path turns the Chat you already use into your local agent.
+
 ## What you need
 
 - macOS on Apple Silicon
 - Node 20 or newer
 - Homebrew, if `tunnel-client` is not installed yet
 - A ChatGPT account on the web. Custom MCP servers are not available on mobile.
-
-Writes have a plan caveat. OpenAI documents full MCP, including write actions, for Business, Enterprise and Edu. Pro accounts are documented as read and fetch only, so the connector may show read tools and reject writes. Check the tool list in the app settings before relying on it.
 
 ## 1. Create the tunnel
 

@@ -403,7 +403,7 @@ function renderDashboard(state) {
       ? `ready ${faint('·')} ${hostOf(state.tunnel.url)}`
       : `${trimTo(state.tunnel.body, 24)} ${faint('·')} ${hostOf(state.tunnel.url)}`,
     state.tunnel.ready ? 'ok' : 'bad')
-  row('Agent', state.agent.installed ? 'Codex plugin installed' : 'no Codex plugin yet',
+  row('Codex', state.agent.installed ? 'plugin installed' : 'plugin not installed, optional',
     state.agent.installed ? 'ok' : 'idle')
 
   const next = nextStep(state)
@@ -478,7 +478,7 @@ function checkList(state) {
     state.tunnel.ready ? `ready at ${state.tunnel.url}/readyz` : `Answers "${trimTo(state.tunnel.body, 40)}" at ${state.tunnel.url}/readyz.`,
     state.tunnel.ready ? null : 'chat-unleashed restart')
 
-  add('Agent', state.agent.installed ? 'ok' : 'warn',
+  add('Codex', state.agent.installed ? 'ok' : 'warn',
     state.agent.installed ? 'The Codex plugin is present.' : 'The Codex plugin is optional and not installed.',
     state.agent.installed ? null : 'tunnel-client codex plugin install')
 
@@ -961,6 +961,8 @@ async function setup() {
 
 function connectorGuide(state) {
   section('ChatGPT')
+  note('Chat is the chat surface. Work and Codex act and share the agentic allowance; this connector gives Chat the same local reach.')
+  gap()
   if (state?.profile?.tunnelId) {
     line(`  ${sub(padEnd('Tunnel ID', 16))}${bold(state.profile.tunnelId)}`)
     hint('Paste this ID into the connector screen.')
@@ -975,9 +977,6 @@ function connectorGuide(state) {
   note(`Tunnels  ${TUNNELS_URL}`)
   note(`Keys     ${KEYS_URL}`)
   note(`ChatGPT  ${CONNECTORS_URL}`)
-  gap()
-  note('Full write access is documented for Business, Enterprise and Edu. Pro is documented as read and fetch only, so check which tools your connector shows.')
-  hint('Agent mode does not use custom apps. Use a normal chat with the app selected.')
 }
 
 async function connectCommand() {

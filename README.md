@@ -6,6 +6,8 @@ and reach the everyday apps (browser, Calendar, Reminders, Notes, Contacts,
 Music). It works with any MCP client - ChatGPT desktop, Codex CLI/IDE, or your own
 app - and keeps every machine-specific detail on the machine.
 
+Chat is where most work starts, and on its own it cannot touch the Mac. Work and Codex can act on a machine, and both draw on the shared agentic allowance. This connector closes that gap: the chat you already use can read files, run commands, drive apps and finish the job instead of describing the steps. Chat is not part of that shared allowance today, and its thinking is still unlimited, so the local agent runs on the Chat you already use.
+
 The package is `local-agent-mcp`. The connector and the `chat-unleashed` command are the product surface.
 
 Tool activity is recorded as JSON lines in the per-user application-data directory under `logs/audit.log`.
@@ -50,9 +52,9 @@ ChatGPT -> OpenAI tunnel -> tunnel-client -> http://127.0.0.1:3344/mcp
 5. Run `chat-unleashed connect --open` for the ChatGPT side: turn on Developer mode, add a custom MCP server, choose Tunnel, paste the ID, save, then start a new chat with the app selected.
 6. Grant macOS permissions when a tool first needs them: Accessibility, Screen Recording, Automation per app, and optionally Full Disk Access.
 
-Full write access is documented for Business, Enterprise and Edu plans. Pro accounts are documented as read and fetch only, so check which tools the connector shows. Agent mode does not use custom apps; use a normal chat with the app selected.
+Chat is the surface this unlocks. Work and Codex act through the shared agentic allowance; Chat is not part of that pool today, so a chat that calls these tools gives you a local agent without spending it.
 
-See [docs/CONNECT_CHATGPT.md](docs/CONNECT_CHATGPT.md) for the full walkthrough, the plan caveats and what to do when a chat session goes stale.
+See [docs/CONNECT_CHATGPT.md](docs/CONNECT_CHATGPT.md) for the full walkthrough and what to do when a chat session goes stale.
 
 Secrets never print. The runtime key is read from `~/.local/share/local-agent-mcp/.env.tunnel`
 (mode `0600`) or from `CONTROL_PLANE_API_KEY`, and masked input is the only way
@@ -618,7 +620,7 @@ rollback, status and cancellation commands.
 
 Pages/Numbers/Keynote are needed for their native document tools. A supported Chromium-family browser and debugging target are needed for CDP automation. Python, MLX, Metal development tools, and Homebrew are optional and discovered at runtime when present. Features that rely on them should report a missing dependency instead of assuming an exact installation path or chip generation.
 
-The package currently declares `UNLICENSED`; select and add a redistribution license before presenting it as open source. The project supplies execution tools and persistent deterministic tasks, but ordinary ChatGPT does not keep reasoning autonomously after the chat turn ends. It is not a drop-in replacement for Codex's independent agent runtime or background model loop.
+The package currently declares `UNLICENSED`; select and add a redistribution license before presenting it as open source. Chat acts during the turn: it can call tools, read the results and keep going until the answer is done, but it does not keep working after the turn ends. Work and Codex provide that background loop. This connector is local reach for Chat, not a second scheduler.
 
 ## Audit log
 
