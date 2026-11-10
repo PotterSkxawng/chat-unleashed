@@ -61,7 +61,7 @@ const WANTS_JSON = flags.has('--json')
 const COLOR = !NO_COLOR && !WANTS_JSON && (process.stdout.isTTY || process.env.FORCE_COLOR === '1')
 
 // ============================================================================
-// Purposeful Semantic Color System (High Contrast, Zero Visual Clutter)
+// Purposeful Semantic Color System — theme-adaptive, zero invisible text
 // ============================================================================
 const esc = (code) => (text) => (COLOR ? `\u001b[${code}m${text}\u001b[0m` : String(text))
 const bold = (text) => (COLOR ? `\u001b[1m${text}\u001b[22m` : String(text))
@@ -70,13 +70,16 @@ const underline = (text) => (COLOR ? `\u001b[4m${text}\u001b[24m` : String(text)
 const rgb = (r, g, b) => (text) => (COLOR ? `\u001b[38;2;${r};${g};${b}m${text}\u001b[0m` : String(text))
 
 // Semantic Palette
-const cBlue = rgb(10, 132, 255)       // Brand, highlights, active step markers
-const cGreen = rgb(48, 209, 88)      // Healthy, verified, success (✔, ●)
-const cRed = rgb(255, 69, 58)        // Critical error, offline, failure (✖)
-const cYellow = rgb(255, 159, 10)    // Warning, attention needed (▲)
-const cWhite = (t) => (COLOR ? `\u001b[1m\u001b[38;2;255;255;255m${t}\u001b[0m` : String(t)) // High-contrast text
-const cGray = rgb(160, 160, 165)     // Clear, readable secondary text
-const cGuide = rgb(85, 85, 95)       // Structural tree guide lines (┌, │, └)
+// Blue, green, red are ANSI standard codes — visible on both light and dark terminals.
+// Never use hardcoded rgb(255,255,255) white — it disappears on light backgrounds.
+const cBlue = rgb(0, 102, 204)         // Brand blue — 5.6:1 on white, works on dark too
+const cGreen = rgb(21, 128, 61)        // Success green — 5.0:1 on white
+const cRed = rgb(185, 28, 28)          // Error red — 6.5:1 on white
+const cYellow = rgb(146, 100, 0)       // Warning amber — passes AA on white
+// cWhite: bold native foreground — renders black on light terminals, white on dark. Never hardcode.
+const cWhite = (t) => (COLOR ? `\u001b[1m${t}\u001b[22m` : String(t))
+const cGray = (t) => (COLOR ? `\u001b[2m${t}\u001b[22m` : String(t))  // Dim native foreground
+const cGuide = (t) => (COLOR ? `\u001b[2m${t}\u001b[22m` : String(t)) // Structural guide lines
 
 function vlen(text) {
   return String(text).replace(/\u001b\[[0-9;]*m/g, "").length
@@ -122,6 +125,40 @@ function treeFooter(text, ok = true) {
   line(cGuide('│'))
   line(cGuide('└  ') + (ok ? cGreen(bold('✔ ' + text)) : cRed(bold('✖ ' + text))))
   gap()
+}
+
+// ASCII art banner — single-tone blue, visible on light and dark terminals
+const BANNER_LINES = [
+  '   ___ _           _     _   _       _                 _              _ ',
+  '  / __\\ |__   __ _| |_  | | | |_ __ | | ___  __ _  ___| |__   ___  __| |',
+  ' / /  | \'_ \\ / _` | __| | | | | \'_ \\| |/ _ \\/ _` |/ __| \'_ \\ / _ \\/ _` |',
+  '/ /___| | | | (_| | |_  | |_| | | | | |  __/ (_| |\\__ \\ | | |  __/ (_| |',
+  '\\____/|_| |_|\\__,_|\\__|  \\___/|_| |_|_|\\___|\\__,_||___/_| |_|\\___|\\__,_|'
+]
+
+function renderBanner() {
+  gap()
+  for (const l of BANNER_LINES) {
+    line('  ' + cBlue(l))
+  }
+  line(
+    '  ' + cWhite('CHAT UNLEASHED') +
+    '  ' + cGray('[ ' + DISPLAY_VERSION + ' ]') +
+    '  ' + cGray('Local Mac MCP for ChatGPT')
+  )
+  gap()
+}
+
+function pressEnterToContinue() {
+  if (!process.stdin.isTTY) return Promise.resolve()
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    process.stdout.write(cGray('  Press Enter to continue ') + cGuide('↵') + cGray(' '))
+    rl.question('', () => {
+      rl.close()
+      resolve()
+    })
+  })
 }
 
 async function withSpinner(label, work) {
@@ -384,69 +421,70 @@ function hostOf(url) {
 // Dashboard Screen (Clean, Aligned, High Contrast)
 // ============================================================================
 function renderDashboard(state) {
-  gap()
-  line(cWhite(' Chat Unleashed') + '  ' + cBlue(`[ ${DISPLAY_VERSION} ]`) + '  ' + cGray('Local MCP Reach for ChatGPT'))
-  
+  renderBanner()
+
   const allOperational = state.server.healthy && state.tunnel.ready
   if (allOperational) {
-    line(cGreen('● All systems operational') + cGray(` · ${state.server.tools ?? '?'} tools ready on port 3344`))
+    line(cGreen('  ● All systems operational') + cGray(` · ${state.server.tools ?? '?'} tools on port 3344`))
   } else {
-    line(cRed('● Services offline') + cGray(' · restart required to connect to ChatGPT'))
+    line(cRed('  ● Services offline') + cGray(' · run: chat-unleashed restart'))
   }
   gap()
 
   const rows = [
-    ['System', `macOS ${state.platform.macOS || 'unknown'} (${state.platform.arch}) · Node ${state.platform.node} · tunnel-client ${state.client.version || 'missing'}`, state.client.installed],
-    ['Tunnel', state.profile.tunnelId ? `${maskId(state.profile.tunnelId)} (profile: ${state.profile.name})` : 'Not configured', Boolean(state.profile.tunnelId)],
+    ['System',      `macOS ${state.platform.macOS || 'unknown'} (${state.platform.arch}) · Node ${state.platform.node} · tunnel-client ${state.client.version || 'missing'}`, state.client.installed],
+    ['Tunnel',      state.profile.tunnelId ? maskId(state.profile.tunnelId) : 'Not configured', Boolean(state.profile.tunnelId)],
     ['Runtime Key', state.key.present ? `Stored in ${state.key.source}` : 'Not set', state.key.present],
-    ['MCP Server', state.server.healthy ? `${state.server.tools ?? '?'} tools online · ${state.server.url}` : `Offline · ${state.server.url}`, state.server.healthy],
-    ['Tunnel Link', state.tunnel.ready ? `Connected & ready · ${state.tunnel.url}/readyz` : `Offline (${state.tunnel.body}) · ${state.tunnel.url}`, state.tunnel.ready]
+    ['MCP Server',  state.server.healthy ? `${state.server.tools ?? '?'} tools online · port 3344` : `Offline · ${state.server.url}`, state.server.healthy],
+    ['Tunnel Link', state.tunnel.ready ? `Connected · port 8080` : `Offline (${state.tunnel.body})`, state.tunnel.ready]
   ]
 
   for (const [lbl, val, ok] of rows) {
     const mark = ok ? cGreen('✔') : cRed('✖')
     const paddedLabel = cGray(padEnd(lbl, 14))
-    const formattedVal = ok ? (lbl.includes('Server') || lbl.includes('Link') ? cGreen(val) : cWhite(val)) : cRed(val)
-    line(`  ${paddedLabel}${padEnd(formattedVal, 64)} ${mark}`)
+    const formattedVal = ok
+      ? (lbl === 'MCP Server' || lbl === 'Tunnel Link' ? cGreen(val) : cWhite(val))
+      : cRed(val)
+    line(`  ${paddedLabel}${padEnd(formattedVal, 56)} ${mark}`)
   }
 
   gap()
   const next = nextStep(state)
-  line(cGray('  Next step:'))
-  line(`    ${cGray('Run')} ${cWhite(bold(next.command))} ${cGray('· ' + next.note)}`)
+  line(cGray('  Next:') + '  ' + cWhite(next.command) + cGray('  ·  ' + next.note))
   gap()
 }
 
 // ============================================================================
-// Connect Guide (Dead-Simple Form Values to Copy for a 5-Year-Old)
+// Connect Guide — clean table of 5 copyable values
 // ============================================================================
 function connectorGuide(state) {
-  treeHeader('ChatGPT Custom Connector Settings', '5 Values to Copy')
-  treeInfo('Open ChatGPT in your browser, go to:')
-  treeInfo('Settings ❯ Connectors (or Plugins) ❯ "Add custom MCP server"')
-  line(cGuide('│'))
+  const tunnelId = state?.profile?.tunnelId || 'run chat-unleashed setup first'
 
-  const fields = [
-    { num: '1', name: 'Name', value: CONNECTOR_NAME },
-    { num: '2', name: 'Description', value: CONNECTOR_DESCRIPTION },
-    { num: '3', name: 'Connection Type', value: 'Tunnel' },
-    { num: '4', name: 'Tunnel ID', value: state?.profile?.tunnelId || 'run chat-unleashed setup first' },
-    { num: '5', name: 'Authentication', value: 'None', hint: 'Leave as None: your local Mac tunnel authenticates automatically.' }
+  gap()
+  line(cWhite('  Copy these 5 values into ChatGPT:'))
+  line(cGray('  Settings › Connectors (or Plugins) › Add custom MCP server'))
+  gap()
+
+  // Simple two-column table: dim label, bold value
+  const labelW = 22
+  const rows = [
+    ['1. Name',            CONNECTOR_NAME],
+    ['2. Description',     'Runs commands, reads/writes files, looks at screen'],
+    ['  ',                 'and drives apps on your Mac.'],
+    ['3. Connection Type', 'Tunnel'],
+    ['4. Tunnel ID',       tunnelId],
+    ['5. Authentication',  'None']
   ]
 
-  for (const f of fields) {
-    line(cGuide('│  ') + bold(cBlue(`${f.num}. ${f.name}:`)))
-    line(cGuide('│     ') + cWhite(f.value))
-    if (f.hint) line(cGuide('│     ') + cGray(f.hint))
-    line(cGuide('│'))
+  for (const [lbl, val] of rows) {
+    const paddedLabel = cGray(lbl.padEnd(labelW))
+    line(`  ${paddedLabel}  ${cWhite(val)}`)
   }
-
-  treeInfo('Quick Links:')
-  treeLink('OpenAI Tunnels', TUNNELS_URL)
-  treeLink('OpenAI API Keys', KEYS_URL)
-  treeLink('ChatGPT Settings', CONNECTORS_URL)
-
-  treeFooter('Tip: Run `chat-unleashed connect --open` to open ChatGPT directly.', true)
+  gap()
+  line(cGray('  ') + cBlue(TUNNELS_URL) + cGray('  ·  OpenAI Tunnels'))
+  line(cGray('  ') + cBlue(KEYS_URL) + cGray('  ·  OpenAI API Keys'))
+  line(cGray('  ') + cBlue(CONNECTORS_URL) + cGray('  ·  ChatGPT Settings'))
+  gap()
 }
 
 async function connectCommand() {
@@ -454,7 +492,7 @@ async function connectCommand() {
   if (!state.profile.exists || !state.profile.tunnelId || !state.key.present) {
     gap()
     line(cRed('✖ Tunnel is not configured yet.'))
-    line(cGray('  Run ') + cWhite('chat-unleashed setup') + cGray(' to set it up step-by-step.'))
+    line(cGray('  Run ') + cWhite('chat-unleashed setup') + cGray(' to configure.'))
     gap()
     return 1
   }
@@ -559,7 +597,7 @@ async function doctor() {
 
   const groups = ['System Environment', 'Configuration & Credentials', 'Background Services & Connectivity']
   for (const g of groups) {
-    line(cGuide('◇  ') + cWhite(bold(g)))
+    line(cWhite(bold(g)))
     const groupChecks = checks.filter((c) => c.group === g)
     for (const c of groupChecks) {
       const ok = c.status === 'ok'
@@ -802,106 +840,159 @@ async function waitUntil(check, timeoutMs = 45000) {
 async function setup() {
   const dryRun = flags.has('--check')
   const assumeYes = flags.has('--yes')
+  const forceNew = flags.has('--fresh')
 
-  treeHeader('Chat Unleashed Setup', 'Step-by-Step Interactive Wizard')
+  renderBanner()
+
   if (dryRun) {
-    treeInfo('Running in inspection mode (--check). No files will be changed.')
-    line(cGuide('│'))
+    line(cGray('  Running in inspection mode (--check). No files will be changed.'))
+    gap()
   }
 
-  const state = await collectState()
+  const state = await withSpinner('Checking system state', collectState)
 
   // --------------------------------------------------------------------------
   // Step 1: System Requirements
   // --------------------------------------------------------------------------
-  treeStep(1, 4, 'System Requirements')
-  treeItem(true, 'macOS:', `${state.platform.macOS || 'Apple Silicon'} (${state.platform.arch})`)
-  treeItem(true, 'Node.js:', state.platform.node)
+  gap()
+  line(cWhite('Step 1 of 4') + cGray('  ·  System Requirements'))
+  line(cGuide('─'.repeat(48)))
+  line(cGreen('✔ ') + 'macOS ' + cWhite(state.platform.macOS || 'Apple Silicon') + cGray(` (${state.platform.arch})`))
+  line(cGreen('✔ ') + 'Node.js ' + cWhite(state.platform.node))
 
   if (!state.client.installed) {
-    treeItem(false, 'tunnel-client:', 'Not installed on this Mac')
-    line(cGuide('│'))
+    line(cRed('✖ ') + cWhite('tunnel-client') + cGray(' is not installed'))
+    gap()
     if (dryRun) {
-      treeInfo('Action needed: Install tunnel-client via Homebrew')
+      line(cGray('  Action needed: brew install openai/tools/tunnel-client'))
     } else {
-      const consent = assumeYes || await ask('Install tunnel-client via Homebrew now? (Y/n)', {
+      const consent = assumeYes || await ask('Install tunnel-client via Homebrew? (Y/n)', {
         fallback: 'y',
         validate: (v) => (/^[yn]/i.test(v) ? null : 'Please answer y or n.')
       })
       if (!/^y/i.test(consent)) {
-        line(cGuide('│  ') + cYellow('▲ ') + cGray('Skipped. Run manually: brew install openai/tools/tunnel-client'))
+        gap()
+        line(cYellow('▲ ') + cGray('Skipped. Run: brew install openai/tools/tunnel-client, then run setup again.'))
+        gap()
         return 1
       }
-      line(cGuide('│  ') + cGray('Running brew install openai/tools/tunnel-client...'))
+      gap()
+      line(cGray('  Running brew install openai/tools/tunnel-client…'))
       const brew = spawnSync('brew', ['install', 'openai/tools/tunnel-client'], { stdio: 'inherit', timeout: 300000 })
       if (brew.status !== 0) {
-        line(cGuide('│  ') + cRed('✖ ') + cGray('Homebrew install failed. Please install manually and retry.'))
+        gap()
+        line(cRed('✖ ') + cGray('Homebrew install failed. Install manually and retry.'))
+        gap()
         return 1
       }
-      treeItem(true, 'tunnel-client:', 'Installed successfully')
+      line(cGreen('✔ ') + 'tunnel-client installed')
     }
   } else {
-    treeItem(true, 'tunnel-client:', `${state.client.version || 'installed'} (${displayPath(state.client.path)})`)
+    line(cGreen('✔ ') + 'tunnel-client ' + cWhite(state.client.version || 'installed'))
   }
-  line(cGuide('│'))
+
+  if (!dryRun) await pressEnterToContinue()
 
   // --------------------------------------------------------------------------
   // Step 2: OpenAI Secure Tunnel
   // --------------------------------------------------------------------------
-  treeStep(2, 4, 'OpenAI Tunnel')
-  treeInfo('A secure tunnel lets ChatGPT connect to your Mac without public IP ports.')
-  treeLink('Create your tunnel at', TUNNELS_URL)
+  gap()
+  line(cWhite('Step 2 of 4') + cGray('  ·  OpenAI Tunnel'))
+  line(cGuide('─'.repeat(48)))
+  line(cGray('A secure tunnel lets ChatGPT reach your Mac without exposing any ports.'))
+  line(cGray('Create your tunnel at: ') + cBlue(TUNNELS_URL))
+  gap()
 
   let tunnelId = state.profile.tunnelId
-  if (tunnelId) {
-    treeItem(true, 'Tunnel ID found:', maskId(tunnelId))
+
+  if (tunnelId && !forceNew) {
+    // Existing tunnel found — ask if they want to keep or replace it
+    line(cGreen('✔ ') + 'Existing tunnel found: ' + cWhite(maskId(tunnelId)))
+    if (!dryRun && !assumeYes) {
+      const keep = await ask('Keep this tunnel? (Y/n)', {
+        fallback: 'y',
+        validate: (v) => (/^[yn]/i.test(v) ? null : 'Please answer y or n.')
+      })
+      if (!/^y/i.test(keep)) {
+        tunnelId = await ask('Enter your new Tunnel ID (starts with tunnel_)', {
+          validate: (val) => (TUNNEL_ID_RE.test(val) ? null : 'Must start with "tunnel_" followed by 32 characters.')
+        })
+        line(cGreen('✔ ') + 'Tunnel ID updated: ' + cWhite(maskId(tunnelId)))
+      }
+    }
   } else {
     if (dryRun) {
-      treeInfo('Action needed: Enter your OpenAI Tunnel ID (starts with tunnel_)')
+      line(cGray('  Action needed: Paste your Tunnel ID (starts with tunnel_)'))
     } else {
-      line(cGuide('│'))
-      tunnelId = await ask('Enter your Tunnel ID (starts with tunnel_)', {
-        validate: (val) => (TUNNEL_ID_RE.test(val) ? null : 'Invalid format. Tunnel ID must start with "tunnel_" followed by 32 characters.')
+      tunnelId = await ask('Paste your Tunnel ID (starts with tunnel_)', {
+        validate: (val) => (TUNNEL_ID_RE.test(val) ? null : 'Must start with "tunnel_" followed by 32 characters.')
       })
-      treeItem(true, 'Tunnel ID saved:', maskId(tunnelId))
+      line(cGreen('✔ ') + 'Tunnel ID saved: ' + cWhite(maskId(tunnelId)))
     }
   }
-  line(cGuide('│'))
+
+  if (!dryRun) await pressEnterToContinue()
 
   // --------------------------------------------------------------------------
   // Step 3: OpenAI Runtime API Key
   // --------------------------------------------------------------------------
-  treeStep(3, 4, 'OpenAI Runtime API Key')
-  treeInfo('Your Mac uses this key to authenticate with the OpenAI tunnel.')
-  treeLink('Create an API key with "Tunnels Read & Use" at', KEYS_URL)
+  gap()
+  line(cWhite('Step 3 of 4') + cGray('  ·  OpenAI Runtime API Key'))
+  line(cGuide('─'.repeat(48)))
+  line(cGray('Your Mac needs this key to authenticate with the OpenAI tunnel.'))
+  line(cGray('Create an API key with "Tunnels Read & Use" at: ') + cBlue(KEYS_URL))
+  gap()
 
-  if (state.key.present) {
-    treeItem(true, 'Runtime Key:', `Stored securely in ${state.key.source}`)
+  if (state.key.present && !forceNew) {
+    line(cGreen('✔ ') + 'Runtime key stored in ' + cWhite(state.key.source))
+    if (!dryRun && !assumeYes) {
+      const keep = await ask('Keep existing key? (Y/n)', {
+        fallback: 'y',
+        validate: (v) => (/^[yn]/i.test(v) ? null : 'Please answer y or n.')
+      })
+      if (!/^y/i.test(keep)) {
+        const entered = await askSecret('Paste your new OpenAI Runtime API Key')
+        if (!entered || entered.length < 10) {
+          gap()
+          line(cRed('✖ ') + cGray('No valid key provided. Run setup again when ready.'))
+          gap()
+          return 1
+        }
+        writeKeyToEnvFile(entered.trim())
+        line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/local-agent-mcp/.env.tunnel'))
+      }
+    }
   } else {
     if (dryRun) {
-      treeInfo('Action needed: Enter your OpenAI API key with Tunnels permissions')
+      line(cGray('  Action needed: Paste your OpenAI API key with Tunnels permissions'))
     } else {
-      line(cGuide('│'))
-      treeInfo('Input is masked and saved securely to mode 0600 (never printed):')
+      line(cGray('  Your input is masked and saved to a 0600 file — never printed:'))
       const entered = await askSecret('Paste your OpenAI Runtime API Key')
       if (!entered || entered.length < 10) {
-        line(cGuide('│  ') + cRed('✖ ') + cGray('No valid key provided. You can run setup again whenever ready.'))
+        gap()
+        line(cRed('✖ ') + cGray('No valid key provided. Run setup again when ready.'))
+        gap()
         return 1
       }
       writeKeyToEnvFile(entered.trim())
-      treeItem(true, 'Runtime Key:', 'Saved securely in ~/.local/share/local-agent-mcp/.env.tunnel')
+      line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/local-agent-mcp/.env.tunnel'))
     }
   }
-  line(cGuide('│'))
+
+  if (!dryRun) await pressEnterToContinue()
 
   // --------------------------------------------------------------------------
   // Step 4: Background Services & Verification
   // --------------------------------------------------------------------------
-  treeStep(4, 4, 'Background Services')
+  gap()
+  line(cWhite('Step 4 of 4') + cGray('  ·  Starting Services'))
+  line(cGuide('─'.repeat(48)))
 
   if (dryRun) {
-    treeInfo('Action needed: Compile server runtime, register launchd daemons, and start.')
-    treeFooter('Dry run complete. Run `chat-unleashed setup` without --check to apply.', true)
+    line(cGray('  Action needed: Compile server bundle, register launchd daemons, start.'))
+    gap()
+    line(cGreen('✔ ') + 'Inspection complete. Run ' + cWhite('chat-unleashed setup') + ' to apply.')
+    gap()
     return 0
   }
 
@@ -910,33 +1001,43 @@ async function setup() {
   if (!state.profile.exists || state.profile.serverUrl !== MCP_URL_FALLBACK) {
     const res = ensureProfile(tunnelId)
     if (!res.ok) {
-      line(cGuide('│  ') + cRed('✖ ') + cGray('Failed to initialize tunnel profile: ' + res.output))
+      gap()
+      line(cRed('✖ ') + cGray('Failed to initialize tunnel profile: ' + res.output))
+      gap()
       return 1
     }
-    treeItem(true, 'Tunnel profile created:', displayPath(profilePath))
+    line(cGreen('✔ ') + 'Tunnel profile written: ' + cGray(displayPath(profilePath)))
   } else if (!state.profile.tunnelId && tunnelId) {
     writeTunnelIdToProfile(profilePath, tunnelId)
-    treeItem(true, 'Tunnel ID added to profile:', displayPath(profilePath))
+    line(cGreen('✔ ') + 'Tunnel ID saved to profile: ' + cGray(displayPath(profilePath)))
+  } else {
+    line(cGreen('✔ ') + 'Profile: ' + cGray(displayPath(profilePath)))
   }
 
   // Compile if needed
   if (!state.dist.exists) {
-    line(cGuide('│  ') + cGray('Compiling server executable (npm run build)...'))
+    line(cGray('  Compiling server bundle (npm run build)…'))
     const bld = spawnSync('npm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 300000 })
     if (bld.status !== 0) {
-      line(cGuide('│  ') + cRed('✖ ') + cGray('Compilation failed. Please fix errors and retry.'))
+      gap()
+      line(cRed('✖ ') + cGray('Compilation failed. Fix errors and retry.'))
+      gap()
       return 1
     }
     spawnSync('node', [join(PKG_ROOT, 'scripts/deploy-local.mjs')], { cwd: PKG_ROOT, stdio: 'inherit', timeout: 60000 })
-    treeItem(true, 'Server runtime bundle:', 'Compiled & deployed')
+    line(cGreen('✔ ') + 'Server bundle compiled and deployed')
+  } else {
+    line(cGreen('✔ ') + 'Server bundle already compiled')
   }
 
   // Register daemons
   const curr = await collectState()
   const jobs = ensureJobs(curr)
-  for (const p of jobs.created) treeItem(true, 'Launchd daemon registered:', displayPath(p))
+  for (const p of jobs.created) line(cGreen('✔ ') + 'Registered: ' + cGray(displayPath(p)))
   if (jobs.error) {
-    line(cGuide('│  ') + cRed('✖ ') + cGray(jobs.error))
+    gap()
+    line(cRed('✖ ') + cGray(jobs.error))
+    gap()
     return 1
   }
 
@@ -945,16 +1046,37 @@ async function setup() {
   await bringUp(fresh.jobs, fresh.profile, withSpinner)
 
   const final = await collectState()
+  gap()
   if (final.server.healthy && final.tunnel.ready) {
-    treeItem(true, 'MCP Server:', `Live with ${final.server.tools ?? '?'} tools online on port 3344`)
-    treeItem(true, 'OpenAI Tunnel:', 'Connected & ready on port 8080')
-    treeFooter('Setup complete! Chat Unleashed is running and ready for ChatGPT.', true)
+    line(cGreen('✔ ') + cWhite('Setup complete!') + ' Chat Unleashed is live and ready for ChatGPT.')
+    line(cGreen('  ✔ ') + 'MCP Server: ' + cWhite(`${final.server.tools ?? '?'} tools`) + cGray(' on port 3344'))
+    line(cGreen('  ✔ ') + 'OpenAI Tunnel: ' + cWhite('connected') + cGray(' on port 8080'))
+    gap()
+
+    // ── Inline Step 5: ChatGPT Connector Values ──────────────────────────────
+    line(cWhite('Almost done!') + cGray('  Copy these 5 values into ChatGPT to connect:'))
+    line(cGray('  Settings › Connectors (or Plugins) › Add custom MCP server'))
     connectorGuide(final)
+
+    if (!assumeYes) {
+      const open = await ask('Open ChatGPT Connectors in your browser? (y/N)', {
+        fallback: 'n',
+        validate: (v) => (/^[yn]/i.test(v) ? null : 'Please answer y or n.')
+      })
+      if (/^y/i.test(open)) {
+        spawnSync('open', [CONNECTORS_URL], { timeout: 5000 })
+        line(cGreen('✔ ') + cGray('Opened in browser.'))
+        gap()
+      }
+    }
     return 0
   } else {
-    treeItem(final.server.healthy, 'MCP Server:', final.server.healthy ? 'Online' : 'Offline')
-    treeItem(final.tunnel.ready, 'OpenAI Tunnel:', final.tunnel.ready ? 'Connected' : 'Offline')
-    treeFooter('Services did not become ready. Run `chat-unleashed doctor` for details.', false)
+    line(cRed('✖ ') + 'Services did not fully come up.')
+    line(cGray('  Server: ') + (final.server.healthy ? cGreen('online') : cRed('offline')))
+    line(cGray('  Tunnel: ') + (final.tunnel.ready ? cGreen('ready') : cRed('offline')))
+    gap()
+    line(cGray('  Run ') + cWhite('chat-unleashed doctor') + cGray(' to inspect what went wrong.'))
+    gap()
     return 1
   }
 }
@@ -966,7 +1088,7 @@ function stopServices(state) {
   for (const job of [state.jobs.server, state.jobs.tunnel]) {
     if (!job) continue
     spawnSync('launchctl', ['bootout', `gui/${UID}/${job.label}`], { encoding: 'utf8', timeout: 5000 })
-    line(cGray('  Stopped ') + cWhite(job.label))
+    line(cGreen('✔ ') + cGray('Stopped ') + cWhite(job.label))
   }
 }
 
@@ -1021,7 +1143,7 @@ function showLogs(which) {
     gap()
     return 1
   }
-  line(cWhite('Streaming log: ') + cBlue(displayPath(path)) + cGray(' · Press Control-C to stop'))
+  line('  ' + cWhite('Streaming log') + '  ' + cBlue(displayPath(path)) + cGray('  ·  Press Control-C to stop'))
   gap()
   const tail = spawn('tail', ['-n', '40', '-f', path], { stdio: 'inherit' })
   tail.on('exit', (code) => process.exit(code ?? 0))
@@ -1049,7 +1171,7 @@ function statusLine() {
       `server ${state.server.healthy ? cGreen(`${state.server.tools ?? '?'} tools`) : cRed('down')}`,
       `tunnel ${state.tunnel.ready ? cGreen('ready') : cRed('down')}`
     ]
-    line(`${mark} ${cWhite(parts.join(cGray(' · ')))} ${cGray(`(${DISPLAY_VERSION})`)}`)
+    line(`${mark}  ${parts.join(cGray(' · '))}  ${cGray(`(${DISPLAY_VERSION})`)}`)
     return state.server.healthy && state.tunnel.ready ? 0 : 1
   })
 }
@@ -1183,7 +1305,7 @@ async function updateCommand() {
 // ============================================================================
 function help() {
   gap()
-  line(cWhite('Chat Unleashed') + '  ' + cBlue(`[ ${DISPLAY_VERSION} ]`))
+  line(cWhite('Chat Unleashed') + '  ' + cGray(`[ ${DISPLAY_VERSION} ]`))
   line(cGray('Local MCP reach for ChatGPT Chat on Apple Silicon Mac.'))
   gap()
   line(cWhite('Usage:'))
@@ -1266,7 +1388,7 @@ async function main() {
       return 0
     default:
       gap()
-      line(cRed('✖ ') + cWhite(`Unknown command "${command}".`))
+      line(cRed('✖ ') + cWhite(`Unknown command: ${command}`))
       line(cGray('  Run `chat-unleashed help` to see all available commands.'))
       gap()
       return 2
