@@ -1,0 +1,82 @@
+{
+  "name": "local-agent-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chat Unleashed: a local MCP server for Apple Silicon Macs, with shell, files, native macOS UI, browser control, durable tasks and deep iWork automation.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.1"
+  },
+  "bin": {
+    "local-agent-mcp": "dist/index.js",
+    "chat-unleashed": "cli/chat-unleashed.mjs",
+    "local-mac": "cli/chat-unleashed.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js && node -e \"require('fs').chmodSync('dist/index.js',0o755)\"",
+    "deploy:local": "node scripts/deploy-local.mjs",
+    "start": "node dist/index.js",
+    "unleashed": "node cli/chat-unleashed.mjs",
+    "stdio": "node dist/index.js --stdio",
+    "http": "node dist/index.js --http --port 3344",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:task": "node scripts/smoke-task.mjs",
+    "smoke:logic": "npm run build:test-fixtures --silent && node scripts/smoke-logic.mjs",
+    "smoke:targets": "node scripts/smoke-targets.mjs",
+    "smoke:all": "node scripts/smoke.mjs && node scripts/smoke-task.mjs && npm run smoke:logic --silent && node scripts/smoke-targets.mjs && node scripts/smoke-project.mjs && node scripts/smoke-portability.mjs",
+    "smoke:project": "node scripts/smoke-project.mjs",
+    "stress:scale": "npm run build:stress-fixtures --silent && node scripts/stress-scale.mjs",
+    "stress:http": "node scripts/stress-http.mjs",
+    "build:test-fixtures": "esbuild src/targeting.ts src/web.ts src/coding.ts src/skills.ts --bundle --platform=node --format=esm --outdir=.test --log-level=warning",
+    "build:stress-fixtures": "esbuild src/store.ts src/large-text.ts src/exec.ts src/coding.ts src/tasks.ts src/capacity.ts src/skills.ts --bundle --platform=node --format=esm --target=node20 --outdir=.stress --log-level=warning",
+    "stress:files": "node scripts/stress-files.mjs",
+    "stress:all": "npm run stress:scale --silent && npm run stress:http --silent && npm run stress:files --silent",
+    "validate:release": "npm run build --silent && npm run check:public --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent",
+    "install:local": "npm run build && npm run deploy:local",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run validate:release",
+    "check:public": "node scripts/check-public.mjs",
+    "smoke:portability": "node scripts/smoke-portability.mjs",
+    "check:pack": "node scripts/check-pack.mjs",
+    "update:install": "node scripts/deferred-update.mjs install",
+    "update:stage": "node scripts/deferred-update.mjs stage",
+    "update:status": "node scripts/deferred-update.mjs status",
+    "update:check": "node scripts/deferred-update.mjs check",
+    "update:cancel": "node scripts/deferred-update.mjs cancel",
+    "test:updater": "node scripts/test-deferred-update.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  },
+  "license": "UNLICENSED",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "keywords": [
+    "mcp",
+    "macos",
+    "apple-silicon",
+    "automation",
+    "iwork",
+    "pages",
+    "numbers",
+    "keynote"
+  ],
+  "files": [
+    "dist/",
+    "cli/",
+    "README.md",
+    "docs/",
+    "scripts/deploy-local.mjs",
+    "scripts/deferred-update.mjs"
+  ]
+}
