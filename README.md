@@ -653,7 +653,7 @@ rollback, status and cancellation commands.
 
 Pages/Numbers/Keynote are needed for their native document tools. A supported Chromium-family browser and debugging target are needed for CDP automation. Python, MLX, Metal development tools, and Homebrew are optional and discovered at runtime when present. Features that rely on them should report a missing dependency instead of assuming an exact installation path or chip generation.
 
-The package currently declares `UNLICENSED`; select and add a redistribution license before presenting it as open source. Chat acts during the turn: it can call tools, read the results and keep going until the answer is done, but it does not keep working after the turn ends. Work and Codex provide that background loop. This connector is local reach for Chat, not a second scheduler.
+Chat acts during the turn: it can call tools, read the results and keep going until the answer is done, but it does not keep working after the turn ends. Work and Codex provide that background loop. This connector is local reach for Chat, not a second scheduler.
 
 ## Audit log
 
@@ -676,6 +676,17 @@ Setting `LOCAL_AGENT_MCP_HOME` changes the application-data root. The audit log 
   must-review after agent sessions, and run it as a non-admin user if you want a
   harder ceiling.
 - Disconnect or disable the ChatGPT connector to revoke ChatGPT access. Stop the tunnel for an immediate remote cutoff; stopping only the local HTTP process does not revoke tunnel credentials. Keep audit history private.
+
+## Contributing and project policies
+
+Chat Unleashed is licensed under the [MIT License](LICENSE). The repository has a
+[contribution guide](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md),
+[security reporting policy](SECURITY.md), [support guidance](SUPPORT.md) and
+[governance notes](GOVERNANCE.md). Please use the GitHub issue and pull request
+templates when proposing changes, and avoid including secrets, personal data or
+unredacted audit logs in reports. CI checks the build, logic tests and release
+hygiene on Apple Silicon macOS; passing CI is not a replacement for real macOS
+permission and UI testing.
 
 ## Development
 

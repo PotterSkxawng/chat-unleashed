@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting and support
+    url: https://github.com/PotterSkxawng/chat-unleashed/blob/main/SUPPORT.md
+    about: Read setup guidance and safe diagnostic steps before opening an issue.
+  - name: Report a security vulnerability privately
+    url: https://github.com/PotterSkxawng/chat-unleashed/blob/main/SECURITY.md
+    about: Follow the confidential reporting instructions. Do not file a public issue.

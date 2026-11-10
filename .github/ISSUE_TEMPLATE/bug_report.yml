@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible problem with Chat Unleashed.
+title: '[Bug]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Never attach API keys, tunnel IDs, raw audit logs, private files or unredacted screenshots. For vulnerabilities, use SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the output of git rev-parse --short HEAD, or the tagged version.
+      placeholder: 'Example: 0.2.0 or commit abc1234'
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, Apple Silicon chip and Node.js version.
+      placeholder: 'macOS version, chip family, Node.js version'
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - CLI and setup
+        - MCP server and tools
+        - Secure MCP Tunnel connection
+        - Pages, Numbers or Keynote
+        - Browser or computer use
+        - Deferred updates
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest safe reproduction, using synthetic data.
+      placeholder: '1. ...\n2. ...\n3. ...'
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized diagnostics
+      description: Include a redacted error excerpt or doctor output if it helps. Do not share secrets.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and checked the troubleshooting guide.
+          required: true
+        - label: This report contains no credentials, private data or unredacted logs.
+          required: true

@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose an improvement to Chat Unleashed.
+title: '[Feature]: '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What is difficult today, and who benefits?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior rather than assuming a specific implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: textarea
+    id: considerations
+    attributes:
+      label: Security, privacy and compatibility considerations
+      description: Note any new macOS permissions, network exposure, file writes or changes to tunnel behavior.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched for a similar existing request.
+          required: true
+        - label: I have not included private files, credentials or identifying logs.
+          required: true

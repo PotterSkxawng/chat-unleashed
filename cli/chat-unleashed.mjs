@@ -740,7 +740,7 @@ function ensureJobs(state) {
   }
   if (!state.jobs.tunnel) {
     if (!state.client.installed) return { created, error: 'tunnel-client is missing (brew install openai/tools/tunnel-client).' }
-    const path = join(AGENTS_DIR, 'com.dhruvgupta.local-agent-tunnel.plist')
+    const path = join(AGENTS_DIR, 'com.local-agent-mcp.tunnel.plist')
     writeFileSync(path, plistTunnel(state.client.path), { mode: 0o644 })
     created.push(path)
   }
@@ -781,7 +781,7 @@ function plistTunnel(clientPath) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.dhruvgupta.local-agent-tunnel</string>
+  <key>Label</key><string>com.local-agent-mcp.tunnel</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>

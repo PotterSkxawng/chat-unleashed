@@ -55,7 +55,7 @@
     "esbuild": "^0.28.2",
     "typescript": "^5.9.3"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "os": [
     "darwin"
   ],
@@ -78,6 +78,15 @@
     "README.md",
     "docs/",
     "scripts/deploy-local.mjs",
-    "scripts/deferred-update.mjs"
-  ]
+    "scripts/deferred-update.mjs",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PotterSkxawng/chat-unleashed.git"
+  },
+  "homepage": "https://github.com/PotterSkxawng/chat-unleashed#readme",
+  "bugs": {
+    "url": "https://github.com/PotterSkxawng/chat-unleashed/issues"
+  }
 }
