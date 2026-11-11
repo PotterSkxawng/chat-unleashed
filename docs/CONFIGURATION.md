@@ -1,50 +1,48 @@
 # Configuration and permissions
 
-This reference covers saved state, the local settings API, macOS permissions, and related runtime behavior.
+This reference covers saved settings, the local settings API, and macOS permissions.
 
 ## Saved state
 
-Saved settings are kept outside the published package at
-`~/Library/Application Support/local-agent-mcp/config.json`. Tests and advanced deployments can override this with `LOCAL_AGENT_MCP_HOME`. Tunnel credentials and profiles are stored separately by the tunnel client and must not be committed.
+Chat Unleashed stores its settings at:
 
-The file is created from defaults on first run, written atomically with mode
-`0600`, and holds the device name, workspace/download/screenshot paths,
-screenshot size and format, shell timeouts, the Computer Use plugin location and
-any API keys you add. Change it with the `app_config` tool, the JSON API below, or
-any editor: the server re-reads it on every tool call, so edits apply without a
-restart, and typed values are validated instead of silently accepted. Secrets are
-masked whenever settings are read.
+```text
+~/Library/Application Support/local-agent-mcp/config.json
+```
 
-Chat Unleashed intentionally does not expose an `allowedRoots` or global `dryRun` setting as a security boundary. Full terminal access could bypass a path-only restriction. Use macOS account isolation or another OS-level boundary when you need a real sandbox.
+Tests and advanced deployments can override that location with `LOCAL_AGENT_MCP_HOME`. The tunnel client stores its own profile and credential separately; neither belongs in the repository.
 
-### Local JSON API (for a desktop frontend)
+On first run, Chat Unleashed creates the config from defaults and writes it atomically with mode `0600`. The file contains the device name, workspace/download/screenshot paths, screenshot format and size, shell timeouts, the Computer Use plugin location, and any API keys you add.
 
-With `--http` (loopback by default) the server also serves a small JSON API for a
-settings UI. Loopback callers only.
+Use `app_config`, the local JSON API below, or a text editor to change settings. The server reloads the file on each tool call, validates typed values, and masks secrets when reading them back.
+
+Chat Unleashed does not expose `allowedRoots` or a global `dryRun` switch as a security boundary. Full terminal access could bypass a path-only restriction. Use macOS account isolation or another OS-level boundary when you need a real sandbox.
+
+## Local JSON API
+
+When the server runs with `--http`, it also serves a loopback-only JSON API for a local settings frontend.
 
 | Route | Purpose |
 | --- | --- |
 | `GET /api/health` | process id and uptime |
-| `GET /api/config` | current settings (secrets masked), file path, defaults |
+| `GET /api/config` | current settings with secrets masked, config path, and defaults |
 | `PATCH /api/config` | merge a partial settings object |
-| `PUT /api/config` | replace settings, filling gaps with defaults |
+| `PUT /api/config` | replace settings and fill omitted values from defaults |
 | `POST /api/config/reset` | restore defaults |
-| `GET /api/status` | permissions, process identity, config path, version |
-| `GET /api/diagnose` | the same diagnosis `mac_permissions` prints |
-| `POST /api/permissions/request` | ask macOS for grants (`{"kinds":[...]}`) |
+| `GET /api/status` | permissions, process identity, config path, and version |
+| `GET /api/diagnose` | the same diagnosis returned by `mac_permissions` |
+| `POST /api/permissions/request` | ask macOS for selected grants (`{"kinds":[...]}`) |
 | `POST /api/permissions/open` | open the matching System Settings pane |
 
-## Permissions
+## macOS permissions
 
-The server asks macOS for what it needs and names the exact binary that has to be
-trusted, whatever launched it.
+Chat Unleashed asks macOS only for permissions required by the tool being used. The error message names the host binary that needs the grant.
 
-- **Accessibility** - read UI trees, click, type, arrange windows
-- **Screen Recording** - screenshots with real pixels
-- **Automation** - Apple Events to Calendar, Notes, browsers and the rest
-  (per app, prompted on first use)
-- **Full Disk Access** - optional, only for protected stores
+| Permission | Used for |
+| --- | --- |
+| Accessibility | Reading UI trees, clicking, typing, and arranging windows |
+| Screen Recording | Capturing screenshots with real pixels |
+| Automation | Sending Apple Events to Calendar, Notes, browsers, iWork, and other apps |
+| Full Disk Access | Reading protected stores when a tool genuinely needs them |
 
-`mac_permissions` reports each one; `action=request` triggers the OS prompts and
-`action=fix` opens the right panes. Tools that need a grant say so in their error,
-with the path to add.
+`mac_permissions` reports the current state. `action=request` triggers the relevant macOS prompt, and `action=fix` opens the matching System Settings pane.

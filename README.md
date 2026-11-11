@@ -6,7 +6,7 @@
 ![Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)
 ![MCP tools](https://img.shields.io/badge/MCP%20tools-114-0A84FF)
 
-**Give ChatGPT secure, local access to your Apple Silicon Mac.**
+**Give ChatGPT local access to your Apple Silicon Mac through MCP.**
 
 Chat Unleashed is an open-source MCP server that lets ChatGPT run commands, work with files, inspect the screen, control apps, automate a browser, edit iWork documents, and carry out longer local workflows. The server stays on your Mac. ChatGPT reaches it through an outbound OpenAI Secure MCP Tunnel.
 
@@ -55,7 +55,7 @@ npm link
 chat-unleashed setup
 ```
 
-The setup wizard checks your Mac and Node version, installs `tunnel-client` when needed, asks for your tunnel ID and runtime key, writes protected local configuration, installs the background services, verifies a real MCP handshake, and enables the tunnel-preserving updater.
+The setup wizard first checks the Mac and Node.js version, then asks for the tunnel ID and runtime key. It configures the local server and background services, verifies a real MCP handshake, and installs the tunnel-preserving updater.
 
 Then run:
 
@@ -129,17 +129,13 @@ The shorter `local-mac` alias points to the same CLI.
 
 ## Security model
 
-Chat Unleashed is deliberately powerful. It is not a sandbox.
+Chat Unleashed has full local authority under the macOS account that runs it. It is not a sandbox.
 
-- **Local listener:** the HTTP server binds to loopback by default and rejects unexpected Host and Origin values. The MCP transport also enables DNS-rebinding protection.
-- **Remote path:** ChatGPT reaches the Mac through the configured outbound Secure MCP Tunnel. Do not expose the local HTTP port directly to a network.
-- **macOS permissions:** Accessibility, Screen Recording, Automation and other permissions remain controlled by macOS. Grant only the permissions you need.
-- **Audit history:** tool calls are written locally. Content-bearing fields such as typed text, document bodies and form values are redacted before logging, and successful tool-result text is not copied into the audit summary. Secret-looking fields, environment values, bearer tokens and common token formats are also redacted. The default audit history is bounded to four 8 MiB files.
-- **Credentials:** the tunnel runtime key is stored in a `0600` local file and is not printed by the CLI.
-- **Prompt injection:** files and web pages can contain untrusted instructions. Treat unexpected tool requests and sensitive actions carefully.
-- **Full terminal access:** `run_command` can do anything your user account can do. There is intentionally no misleading "allowed roots" setting presented as a security boundary.
+The local HTTP server binds to loopback, checks Host and Origin values, and enables the MCP transport's DNS-rebinding protection. ChatGPT reaches the Mac through the configured outbound OpenAI Secure MCP Tunnel, so the local MCP port should stay private.
 
-For vulnerability reporting and operational boundaries, read [SECURITY.md](SECURITY.md).
+macOS still controls Accessibility, Screen Recording, Automation and other permissions. The runtime key lives in a protected local file, and the audit log redacts secret-looking fields and content-bearing arguments before writing them. Files and web pages can still contain prompt-injection attempts, and `run_command` can do anything the user account itself can do.
+
+Read [SECURITY.md](SECURITY.md) for the full trust boundaries, audit behavior and vulnerability-reporting process.
 
 ## Tunnel-safe updates
 
@@ -178,7 +174,7 @@ Saved configuration lives under:
 ~/Library/Application Support/local-agent-mcp/
 ```
 
-The tunnel profile and runtime credential are stored separately in their own protected user locations. The server re-reads its settings on each tool call, so most configuration changes do not require a restart.
+The tunnel client keeps its profile and runtime credential in separate protected user locations. The server re-reads its settings on each tool call, so most configuration changes do not require a restart.
 
 Read [Configuration and permissions](docs/CONFIGURATION.md) for paths, the local settings API, macOS permissions and optional integrations.
 
@@ -186,6 +182,7 @@ Read [Configuration and permissions](docs/CONFIGURATION.md) for paths, the local
 
 - [Connect ChatGPT](docs/CONNECT_CHATGPT.md)
 - [Tool reference](docs/TOOLS.md)
+- [iWork behavior and editing details](docs/IWORK.md)
 - [Configuration and permissions](docs/CONFIGURATION.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Tunnel-safe updates](docs/DEFERRED_UPDATES.md)

@@ -1,6 +1,6 @@
 # Tool reference
 
-Chat Unleashed currently exposes 114 MCP tools. This document keeps the detailed tool catalog out of the landing page while preserving the full reference.
+Chat Unleashed currently exposes 114 MCP tools. This file is the compact catalog; focused references cover behavior that needs more detail.
 
 ## Tools
 
@@ -46,233 +46,9 @@ Chat Unleashed currently exposes 114 MCP tools. This document keeps the detailed
 | `mac_shortcuts` | List and run the user's Shortcuts, optionally with a file input. |
 | `pages_export` | Exports through Pages' own exporter to PDF, txt, RTF, EPUB or Word. |
 
-## Pages (native)
+## iWork
 
-The `pages_*` tools drive the actual Pages app over Apple Events. There is no
-Word, no docx and no conversion step anywhere in the path - a document created
-here is a normal `.pages` file that opens, edits and exports like any other.
-
-Two rules are baked into the implementation:
-
-- **Documents are never closed and Pages is never quit.** Anything the tools
-  create is saved and left open for you.
-- **No third-party format is used as an interchange layer.** Content goes
-  straight into Pages' rich-text model.
-
-Because Pages' scripting dictionary exposes font/size/color but not paragraph
-styles, `format: "styled"` maps each block type onto a concrete font + size +
-color instead of naming Heading 1. Pass `format: "plain"` (the default when you
-supply a `template`) to leave the template's own paragraph styles in charge.
-
-### What an edit preserves
-
-Every editing op falls into one of three buckets, and knowing which is which is
-the difference between a clean edit and a mangled document.
-
-**Never rewrites anything it was not pointed at.** `append`, `prepend`,
-`insertParagraph`, `deleteParagraph`, `duplicateParagraph`, `moveParagraph` and
-`pages_table`'s structural ops work on real paragraph and cell objects. Every
-other paragraph keeps its runs, including bold/italic *inside* the text.
-
-**Rewrites one paragraph, keeps its look.** `replaceParagraph`, `insertText`,
-`deleteText`, `splitParagraph` and `mergeParagraphs` set the paragraph's
-contents and leave its font, size and colour alone. The paragraph looks the same
-afterwards - but any character-level formatting *inside* that one paragraph
-(a bold phrase mid-sentence) is flattened, because the text is being replaced
-wholesale. Everything outside the paragraph is untouched.
-
-**Formats without touching text.** `pages_format` and `pages_replace` never
-change what a paragraph looks like except in the way you asked for.
-`pages_format` can address a character range (`op: "characters"`) or every
-occurrence of a string (`op: "matches"`), which is how you bold a term
-everywhere without disturbing the rest of the paragraph.
-
-`setBody` is the one op that rebuilds the whole body from plain text. Treat it
-as the "start over" escape hatch, not the default.
-
-### Editing without wrecking formatting
-
-`pages_replace` is deliberately *narrow*: it only rewrites the units you point
-it at, and never rebuilds the body.
-
-- **scope** - `document` (all paragraphs + all cells), `paragraph` (one index),
-  `table`, `row`, `column`, `cell`. Table scopes take `table`, `row`, `col`.
-- **keepFormat** - `true` (default) re-applies the paragraph's own face, size
-  and colour after the rewrite; `false` lets the paragraph's style default take
-  over. Table cells keep their formatting either way: only the cell *value* is
-  written, so fill, borders and alignment survive.
-
-### Inserting text without disturbing the neighbours
-
-Pages has no "insert paragraph at index N" command. The workaround is to splice
-into the anchor paragraph's own contents (`anchorText & linefeed & newText`),
-which creates the new paragraphs *in place* and lets the anchor keep its
-formatting. `insertParagraph` and `prepend` both work this way, so an insert in
-the middle of a styled document does not reset the paragraphs around it.
-
-One consequence: the anchor paragraph is rewritten, so inline runs inside that
-single paragraph are flattened. If that matters, anchor to an empty paragraph or
-use `append`.
-
-### Default styles
-
-`pages_styles` owns a persisted default at
-`~/.config/local-agent-mcp/pages-style.json`. `set` writes it; `pages_create`
-picks it up whenever no `style` is passed, so "the look of new documents" is a
-machine setting rather than a per-call argument. `get` prints the resolved type
-scale so you can see exactly what each role will become.
-
-`apply` restyles an existing document: it infers each paragraph's role from its
-size relative to the document's dominant body size (and from italic/mono faces),
-then rewrites font, size and colour per role, leaving every character of text
-alone. The heuristic is size-based, so a document with unusual proportions can
-be misread - `pages_inspect` first, then `pages_format` for surgical fixes.
-
-### Styles
-
-`style` takes a preset name - `classic`, `serif`, `modern`, `compact` - or an
-object of overrides (`family`, `baseSize`, `accent`, `muted`, `headerFill`,
-`headerText`, `zebra`). Families: `helvetica-neue`, `georgia`, `avenir-next`,
-`palatino`, `times`. Every size is derived from `baseSize` through a fixed type
-scale, so one number re-proportions the whole document.
-
-### Tables
-
-A `table` block builds a real Pages table: `header` (creates a true header row),
-`rows`, `headerColumn`, per-column `align`, `columnWidths`, and `zebra`. Tables
-must be the **last** blocks, because Pages cannot insert an inline table
-mid-flow and reordering content silently would be worse than refusing.
-
-Existing tables are edited in place with `pages_table`:
-
-- **values** - `setCell` (one cell, plus `font`, `size`, `color`, `bold`,
-  `italic`, `fill`, `align`), `setCells` (a rectangular grid at once). Writing a
-  value resets the run to the table's body style, so the cell's own face, size
-  and colour are captured first and written back afterwards - a value edit does
-  not quietly restyle the cell.
-- **structure** - `insertRows`/`deleteRows`, `insertColumns`/`deleteColumns`,
-  `merge`, `unmerge`, `resize`, `clear`, `sort` (by column, ascending or
-  descending).
-- **formatting** - `format` with `font`, `size`, `color`, `fill`, `align`,
-  `verticalAlign`, `wrap`, `headerRows`, `headerCols`, `footerRows`,
-  `columnWidths`, `rowHeights`. Omit `rows`/`cols` to format the whole table.
-
-`bold`/`italic` work by swapping to the matching face of the cell's *current*
-family, so a Georgia cell stays Georgia when you bold it. Row and column
-inserts shift *values*, not cell formatting: the cell keeps its own styling and
-the data moves into it.
-
-Set a cell value beginning with `=` to write a formula (`=SUM(B2:B5)`); Pages
-evaluates it, and `pages_inspect` will report the computed value afterwards.
-
-### What Pages does not expose
-
-Worth knowing before you promise something the dictionary cannot do. Pages'
-scripting interface covers font, size, colour, cell fill, cell alignment, table
-geometry and object placement. It does **not** expose, for body text:
-
-- paragraph alignment (left/centre/right/justify)
-- line spacing, paragraph spacing, tabs, indents
-- text highlight / background colour behind a run
-- paragraph styles by name (which is why `format: "styled"` maps block types
-  onto concrete font + size + colour instead of naming "Heading 1")
-
-Table cells *do* have alignment and vertical alignment, so use a table when you
-need centred or right-aligned content.
-
-### Large documents
-
-Reading used to cost four Apple Events *per paragraph* - a 20-page document
-meant thousands of round trips, and the output string was built with quadratic
-concatenation. Both are gone:
-
-- **Bulk property reads.** `font of every paragraph`, `size of every paragraph`,
-  `color of every paragraph` and `contents of every paragraph` each come back in
-  a single event, so a long document is read in a handful of round trips. If any
-  coercion fails the code falls back to the per-paragraph loop automatically.
-- **One join at the end.** Records are accumulated in a list and joined once
-  with `text item delimiters`, instead of `out & ...` inside the loop.
-- **Argument-size safety.** `osascript -e` is bounded by the kernel's argument
-  limit, so any script over ~60 KB is written to a temp file and run from there.
-  Large `setBody`/`append` payloads no longer fail with "argument list too long".
-- **Timeouts scale with the document** rather than cutting a long read off.
-
-`pages_verify` is the companion tool: point it at a 20-page document and it
-reports counts, the typography actually in use, table structure, and any
-structural problems - implausible point sizes, missing fonts, empty or ragged
-tables, runs of blank paragraphs, merged cells that cannot be addressed. Pass
-`expectParagraphs` / `expectTables` to assert an exact structure.
-
-### Running in the background
-
-The Pages tools never bring Pages to the front. Nothing in the generated
-AppleScript calls `activate`; every edit is sent as an Apple Event to the
-running app, so the document is modified while you keep working in whatever
-window you are actually using.
-
-The single exception is opening a document that is not already open - macOS
-raises the app for that. When it happens the script remembers which app had
-focus and hands it straight back, so even that case does not leave you looking
-at Pages.
-
-Verified mechanically: of the 34 scripts the Pages suite generates, zero contain
-`activate`. The only scripts in the whole server that do are the four Keynote
-slideshow commands and Finder's `reveal`/`open`, where taking the screen is the
-point.
-
-## Numbers
-
-Numbers is not Pages with a grid. Three differences matter, and the tools are
-built around them:
-
-- **Content lives on sheets.** `numbers_sheets` addresses them; every table and
-  cell operation takes `sheet` (default 1).
-- **Cells have A1 names.** `numbers_cells` speaks `B4` and `A1:C10` rather than
-  row/column indices, and `get` renders the result as a grid.
-- **Structure is native.** Numbers exposes `add row above`, `add row below`,
-  `add column before`, `add column after`, `transpose`, `sort`, `merge` and
-  `unmerge` as real commands. Pages tables needed value-shifting workarounds;
-  Numbers does not, so rows and formulas move correctly.
-
-Values are typed by shape: `42` is stored as a number, `true` as a boolean,
-`=SUM(B2:B5)` as a live formula, anything else as text.
-
-## Keynote
-
-A slide's text lives in two placeholder shapes - `default title item` and
-`default body item`. `keynote_content` writes through those, which keeps the
-theme's typography; dropping a text box on top would look wrong on every theme.
-If a layout has no title placeholder the tool says so instead of silently
-creating an orphan text box.
-
-Reordering is copy-then-delete, because Keynote exposes `duplicate ... to
-<location>` but no plain `move`. Both halves run in one script so the document
-never sits in a half-moved state.
-
-`keynote_show` drives a real presentation - `start`, `goto`, `next`,
-`previous`, `stop`. It activates Keynote, because that is what presenting means.
-
-## Cross-app iWork
-
-Pages, Numbers and Keynote share one object model: documents hold shapes,
-images, text items, tables, charts, movies and lines, and each is an `iWork
-item` with position, width, height, rotation and opacity. The only real
-difference is where content lives:
-
-| App | Content container |
-| --- | --- |
-| Pages | the document (body text, sections, pages) |
-| Numbers | sheets, each holding tables |
-| Keynote | slides |
-
-`iwork_shapes`, `iwork_export` and `iwork_document` are written once against
-that shared model. Pass `path` and the app is inferred from the extension
-(`.pages`, `.numbers`, `.key`); pass `app` to use the frontmost document.
-
-`iwork_script` is the escape hatch for anything the structured tools do not
-cover: your AppleScript runs inside the target app with `doc` already bound.
-Scripts containing `close` or `quit` are refused - the never-close rule is
-enforced, not just documented.
+Pages, Numbers, and Keynote use native Apple Events and edit real iWork documents. The catalog above lists the individual tools; [IWORK.md](IWORK.md) explains formatting preservation, Pages table behavior, Numbers formulas and ranges, Keynote placeholders, background editing, scripting limits, and iWork permissions.
 
 ## Computer use
 
@@ -326,16 +102,11 @@ by a check before it counts as done.
 | `task_approve` | Clears the gate on a step that changes something outside the project. |
 | `task_close` | Re-runs the criteria and refuses to close while anything lacks evidence. |
 
-Three rules make the stored state trustworthy:
+The task state follows three rules:
 
-- **Executed is not verified.** A step with no `verify` check ends `unverified`.
-  A task with an unmet criterion cannot close as done unless `task_close force`
-  writes the gap into the reason.
-- **Evidence belongs to a definition.** Editing a verified step clears its proof
-  and puts it back in the queue, because the old check proved the old command.
-- **Approval is a stored decision, not a conversation.** Steps that run `rm`,
-  `sudo`, `git push`, force flags or shutdown wait until `task_approve` records
-  a timestamp for that exact step.
+1. A step without a `verify` check ends as `unverified`. An unmet success criterion blocks normal closure; `task_close force` records the gap in the reason.
+2. Editing a verified step clears its existing evidence and returns the step to the queue because the old check proved the old definition.
+3. `task_approve` stores approval on the exact step. Commands involving `rm`, `sudo`, `git push`, force flags, or shutdown wait for that recorded decision.
 
 Checks cover a shell command and its output, a file that exists or does not,
 a window title, interface text, another tool call, and polling with `wait`. The
@@ -363,7 +134,7 @@ Two tools replace guessing at coordinates.
 
 A window that exists but is not drawn is reported as such, which is how a
 minimized window or one on another Space shows up instead of as an element that
-cannot be found. The context trail is kept on disk across calls, so a workflow that
+cannot be found. Chat Unleashed keeps the context trail on disk across calls, so a workflow that
 moves between Pages, Numbers and Finder does not have to re-establish where it was.
 
 The method ladder is the point. In order:
@@ -411,9 +182,9 @@ thermal state, not the code.
 | --- | --- |
 | `web` | Structured control of a Chromium browser through the DevTools protocol: tabs, navigation, DOM outline with stable element ids, locators (`css=`, `text=`, `role=`, `label=`, `id=`, `xpath=`), click, type, text, screenshots, console and network capture, waiting, evaluation, downloads, and page snapshots for change detection. `changes` diffs the current text against the stored snapshot line by line and prints what appeared and disappeared. `download` sets the download folder, clicks the link that offers the file and waits for the partial file to finish; `downloads` lists what arrived. |
 
-Clicks and typing are verified against the url and the page text. The browser is
-started with its own profile, separate from the one the person is signed into, so a
-page that needs their session has to be signed into once in that profile. Without a
+Chat Unleashed verifies clicks and typing against the URL and page text. Browser
+automation starts with its own profile, separate from the one the person is signed
+into, so a page that needs their session must be signed into once in that profile. Without a
 Chromium, `engine=safari` gives tab listing, navigation and page text, and says what
 else is unavailable instead of pretending.
 
@@ -429,17 +200,17 @@ which means it inherits retries, checkpoints, approval gates and evidence.
 
 ## System automation
 
-`mac_*` tools cover the parts of a Mac that are not documents:
+`mac_*` tools cover the parts of a Mac that are not documents.
 
-- **`mac_apps`** - what is running, what is in front, activate/launch/hide.
-- **`mac_ui`** - System Events: windows, menu clicks, keystrokes. This is the
-  long tail for apps with no scripting interface, and it needs **Accessibility**
-  permission in addition to Automation. The error message tells you where.
-- **`mac_system`** - clipboard text, notifications, volume, battery, disk,
-  uptime.
-- **`mac_finder`** - reveal, open, inspect, Trash.
-- **`mac_shortcuts`** - list and run Shortcuts, optionally with a file input.
-  Prefer this over UI scripting when a shortcut exists.
+| Tool | Purpose |
+| --- | --- |
+| `mac_apps` | Report running/frontmost apps and activate, launch, or hide an app |
+| `mac_ui` | Work with windows, menu items, and keystrokes through System Events |
+| `mac_system` | Clipboard text, notifications, volume, battery, disk, and uptime |
+| `mac_finder` | Reveal, open, inspect, or move a path to Trash |
+| `mac_shortcuts` | List and run Shortcuts, optionally with a file input |
+
+`mac_ui` needs Accessibility permission in addition to Automation. Prefer `mac_shortcuts` over UI scripting when an existing shortcut already expresses the action.
 
 The `mac_apps` and `mac_finder` convenience tools favor explicit app activation
 and recoverable Trash operations. Other tools have broader authority:
@@ -447,14 +218,4 @@ and recoverable Trash operations. Other tools have broader authority:
 delete files. Restrict which agents can connect and review the per-user audit log.
 `iwork_apps` only queries already-running apps and does not launch them.
 
-### One-time permission
-
-macOS blocks Apple Events until the host app is granted Automation access. The
-first call raises a prompt; if it was declined, every call returns `-1743` /
-`-10004` and `pages_status` prints the exact System Settings path plus the
-process chain, so you know which app to authorise:
-
-**System Settings → Privacy & Security → Automation → [host app] → Pages → on**
-
-Pages is addressed by bundle id (`com.apple.Pages`) rather than by name, so a
-renamed copy of the app still works.
+For iWork-specific Automation permission behavior, see [IWORK.md](IWORK.md#permissions).
