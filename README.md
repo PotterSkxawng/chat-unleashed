@@ -10,6 +10,15 @@
 
 Chat Unleashed is an open-source MCP server that lets ChatGPT run commands, work with files, inspect the screen, control apps, automate a browser, edit iWork documents, and carry out longer local workflows. The server stays on your Mac. ChatGPT reaches it through an outbound OpenAI Secure MCP Tunnel.
 
+## Why Chat Unleashed exists
+
+Chat is where most work starts, but normal Chat does not natively act on your Mac. Work and Codex can carry out agentic work, but they currently draw from a shared agentic usage allowance. Chat Unleashed closes that gap by giving the normal Chat experience a local execution layer: the same conversation can reason about a task and then use MCP tools to do the work on your Mac.
+
+That usage distinction is part of the project's motivation, not just a pricing footnote. As of November 2026, OpenAI documents Work and Codex as sharing an agentic allowance, while Instant Chat does not draw from that allowance. OpenAI has also announced that this accounting will change starting in December as agentic Work capabilities move further into ChatGPT, so this paragraph is intentionally time-bounded rather than a permanent product promise.
+
+- [ChatGPT and Codex usage limits](https://help.openai.com/en/articles/20001625-understanding-chatgpt-and-codex-usage-limits)
+- [Work and Codex usage](https://help.openai.com/en/articles/20001516-managing-usage-with-gpt-6-astra-in-work-and-codex)
+
 > **Public Beta:** Chat Unleashed has full terminal and desktop access with the permissions of your macOS account. Read the [security model](#security-model) before connecting it.
 
 ## How it works
