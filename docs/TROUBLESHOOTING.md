@@ -1,6 +1,6 @@
 # Connection and runtime troubleshooting
 
-Local Mac has three separate parts: the MCP server running on the Mac, the outbound Secure MCP Tunnel client, and ChatGPT's connector session. A healthy Node process does not prove that the tunnel is connected, and a healthy tunnel does not prove that an existing chat session is still bound to it.
+Chat Unleashed has three separate runtime layers: the MCP server running on the Mac, the outbound Secure MCP Tunnel client, and ChatGPT's connector session. A healthy Node process does not prove that the tunnel is connected, and a healthy tunnel does not prove that an existing chat session is still bound to it.
 
 The supported remote connection is:
 

@@ -15,14 +15,19 @@ concurrency:
 jobs:
   checks:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.11.1', '22', '26']
+    name: Node ${{ matrix.node }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -31,9 +36,17 @@ jobs:
       - name: Check public release hygiene
         run: npm run check:public
         env:
-          # The generic CI account name collides with a source variable used in tests.
           USER: ''
+      - name: Check Git history hygiene
+        if: matrix.node == '22'
+        run: npm run check:history
       - name: Run logic smoke tests
         run: npm run smoke:logic
+      - name: Run portability smoke tests
+        run: npm run smoke:portability
+      - name: Check CLI contracts
+        run: npm run test:cli
+      - name: Check audit privacy
+        run: npm run test:audit
       - name: Verify package contents
         run: npm run check:pack

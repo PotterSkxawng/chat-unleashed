@@ -1,92 +1,128 @@
-# Connecting ChatGPT to this Mac
+# Connecting ChatGPT to Chat Unleashed
 
-ChatGPT runs in the cloud. This server runs on your Mac and listens on loopback only. The supported bridge is OpenAI's Secure MCP Tunnel: an outbound connection that `tunnel-client` keeps open, so no port is exposed and no public URL is needed.
+ChatGPT runs remotely. Chat Unleashed runs on your Mac and listens on loopback only. The supported bridge is OpenAI's Secure MCP Tunnel: an outbound connection maintained by `tunnel-client`, so no public port or public reverse proxy is required.
 
 ```text
 ChatGPT -> OpenAI Secure MCP Tunnel -> tunnel-client -> http://127.0.0.1:3344/mcp
 ```
 
-## Why this exists
-
-Chat answers, but on its own it cannot act on your Mac. Work and Codex can act, and both draw on the shared agentic allowance. This connector gives Chat the same reach: with the app selected, a normal chat can call the local tools, read the results and keep going until the task is done. Chat is not part of that shared allowance today, and its thinking is still unlimited, so this path turns the Chat you already use into your local agent.
-
 ## What you need
 
-- macOS on Apple Silicon
-- Node 20 or newer
-- Homebrew, if `tunnel-client` is not installed yet
-- A ChatGPT account on the web. Custom MCP servers are not available on mobile.
+- Apple Silicon Mac
+- Node.js 20.11.1 or newer
+- Homebrew if `tunnel-client` is not already installed
+- A ChatGPT workspace with the Secure MCP Tunnel connection option available
 
 ## 1. Create the tunnel
 
-Open <https://platform.openai.com/settings/organization/tunnels>, create a tunnel, and copy its ID. It looks like `tunnel_` followed by 32 lowercase letters or digits, optionally with a four character namespace.
-
-Your account needs Tunnels Read and Use to create the runtime key in the next step.
+Open <https://platform.openai.com/settings/organization/tunnels>, create a tunnel, and copy its ID. It starts with `tunnel_`. OpenAI currently requires Tunnels Read + Manage to create or edit a tunnel.
 
 ## 2. Create the runtime key
 
-Open <https://platform.openai.com/settings/organization/api-keys> and create a key for the tunnel runtime. Copy it once; it is not shown again. Do not use an admin key for the long-lived daemon.
+Open <https://platform.openai.com/settings/organization/api-keys> and create a restricted runtime key for `tunnel-client`. OpenAI currently requires Tunnels Read + Use to run the client and select the tunnel in ChatGPT. Copy the key once and keep it private. Do not use a broader admin credential for the long-lived local service.
 
 ## 3. Run setup
 
-From this checkout:
+From the repository checkout:
 
 ```sh
-npm install
+npm ci
+npm run build
 npm link
 chat-unleashed setup
 ```
 
-Setup asks for the tunnel ID, then the key. The key input is hidden. It then writes `~/.config/tunnel-client/local-mac.yaml` pointed at `http://127.0.0.1:3344/mcp`, stores the key in `~/.local/share/local-agent-mcp/.env.tunnel` with mode `0600`, installs the server and tunnel launchd jobs, builds and deploys the server if needed, starts both, and waits for a real MCP handshake and a `ready` tunnel.
+The wizard validates Apple Silicon and Node.js first. It then:
 
-Run it again at any time. Every step that is already true is skipped. `--check` prints the plan without writing anything.
+1. installs `tunnel-client` through Homebrew when needed,
+2. asks for the tunnel ID,
+3. accepts the runtime key through masked input,
+4. writes `~/.config/tunnel-client/local-mac.yaml`,
+5. stores the key in `~/.local/share/local-agent-mcp/.env.tunnel` with mode `0600`,
+6. builds and deploys the local server when needed,
+7. installs independent server and tunnel LaunchAgents,
+8. verifies a real MCP handshake and tunnel readiness,
+9. installs the tunnel-preserving update watcher.
+
+Run setup again at any time. Existing correct steps are reused. `chat-unleashed setup --check` inspects the plan without writing anything. `--fresh` lets you replace the saved tunnel ID or key deliberately.
 
 ## 4. Add the connector in ChatGPT
 
-1. Open chatgpt.com in a browser and sign in.
-2. Settings, Security and login, turn on Developer mode.
-3. Settings, Connectors (or Plugins), Add custom MCP server.
-4. Fill the form with these exact values.
+OpenAI's current flow is on ChatGPT web. Workspace permissions still control who can add custom MCP servers. You do not need to enable Developer Mode first.
+
+Run:
+
+```sh
+chat-unleashed connect --open
+```
+
+The command prints the current values and opens ChatGPT plus the Platform tunnel/key pages. In ChatGPT:
+
+1. Open **Plugins**.
+2. Select **+**, then **Add custom MCP server**.
+3. Enter the name and description below.
+4. Under **Connection**, choose **Tunnel** and select or paste your tunnel ID.
+5. Set the local MCP authentication to **None**.
+6. Review the risk warning, acknowledge it, and create the plugin.
+
+Use these values in the custom MCP server form:
 
 | Field | Value |
 | --- | --- |
 | Name | Chat Unleashed |
 | Description | Runs commands, reads and writes files, looks at the screen and drives apps on my Mac. Use it when a request needs work done on the local machine instead of only an answer. |
 | Connection | Tunnel |
-| Tunnel | the ID you copied in step 1 |
+| Tunnel | the tunnel ID created in step 1 |
 | Authentication | None |
 
-Authentication is None because ChatGPT never authenticates to the server. The tunnel holds the runtime key on this Mac, and `tunnel-client` presents it to OpenAI. There is no OAuth client to register and no secret to paste into ChatGPT.
+Authentication is `None` at the local MCP layer because `tunnel-client` holds the runtime credential on the Mac and authenticates the outbound tunnel. Do not paste the runtime key into the ChatGPT connector form.
 
-If the form only offers a Server URL field, tunnels are not enabled for that workspace; the Tunnel option has to be present for this setup.
+If the form does not offer a Tunnel connection type, the required tunnel feature is not available in that workspace configuration.
 
-5. Save, open the connector details and refresh tools so the app picks up the current tool list.
-6. Open a new chat, select the app from the composer with the plus button, and ask for something local, for example: "Use Chat Unleashed to list the files on my Desktop."
+After creation, review the discovered tools. When the server's tool definitions change later, refresh the custom MCP server's tools in the workspace before relying on the new definitions.
 
-`chat-unleashed connect` prints these steps with your tunnel ID, and `chat-unleashed connect --open` opens the three pages for you.
+OpenAI's current setup documentation is maintained at <https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt> and the Secure MCP Tunnel guide at <https://developers.openai.com/api/docs/guides/secure-mcp-tunnels>.
 
-## 5. Approve actions
+## 5. Grant macOS permissions as needed
 
-Write actions ask for confirmation the first time. Choosing remember applies to that conversation only; a new conversation asks again. Tools marked read-only skip the prompt.
+The first use of a capability may trigger macOS permissions such as:
 
-If a tool fails with a permission error, open System Settings, Privacy and Security, and grant the pane the error names. `mac_permissions` reports the current state and the exact binary that needs the grant.
+- Accessibility
+- Screen Recording
+- Automation for a specific app
+- Full Disk Access for protected files, only when genuinely required
+
+Use the `mac_permissions` tool or `chat-unleashed doctor` to inspect permission state. macOS remains the authority for these grants.
 
 ## Changing the setup later
 
-- Re-run `chat-unleashed connect` to see the connector steps with the current tunnel ID.
-- Toggle individual tools in the app's details page in ChatGPT. After a server update, refresh the app to pull the new tool list.
-- Edit settings in `~/Library/Application Support/local-agent-mcp/config.json`, or through the `app_config` tool. The server re-reads the file on every call.
-- `chat-unleashed doctor` names the failing layer and its fix. `chat-unleashed logs tunnel` follows the tunnel log.
+- `chat-unleashed connect` shows the current connector values.
+- `chat-unleashed doctor` identifies which layer is failing.
+- `chat-unleashed logs tunnel` follows the tunnel log.
+- `chat-unleashed setup --fresh` replaces tunnel credentials deliberately.
+- `app_config` edits saved local settings.
+- `chat-unleashed update` stages source updates without restarting the tunnel.
 
-## When a chat stops talking to the Mac
+## When a conversation stops reaching the Mac
 
-A healthy tunnel does not prove an old chat session is still bound to it. If a request fails after a restart, start a new conversation and select the app again. Refreshing tools does not revive a dead session handle. The tunnel and the local server can both be healthy while a stale connector session is not.
+Treat the local server, tunnel process and ChatGPT connector session as separate layers.
 
-If the tunnel exits but the server is alive, check `chat-unleashed doctor` and the tunnel log. The runtime key must be present in the environment of the tunnel process, which setup handles through the launchd wrapper.
+A healthy server does not prove the tunnel is ready. A healthy tunnel does not prove an older conversation still has a valid connector session. Run:
+
+```sh
+chat-unleashed doctor
+```
+
+If the server and tunnel are healthy but an existing conversation still cannot call tools, refresh the connector tools and start a new conversation with Chat Unleashed selected.
+
+Avoid restarting the tunnel as a first troubleshooting step. A tunnel restart can invalidate active remote session state.
 
 ## Security notes
 
-- The tunnel is outbound. Nothing listens on a public interface.
-- The key lives in a `0600` file and is referenced by name in the tunnel profile, never copied into it.
-- `chat-unleashed` never prints the key, including in `doctor` and `status --json`.
-- The audit log under `~/.local/share/local-agent-mcp/logs/audit.log` records tool calls locally. Do not commit it.
+- The local MCP endpoint is loopback-only by default.
+- The tunnel is outbound and does not require exposing a public port.
+- The runtime key is stored in a protected `0600` file and is never printed by the CLI.
+- Audit logs are local and bounded. Content-bearing arguments and successful tool-result text are not copied into the audit trail; secret-looking fields and environment values are redacted. Logs can still contain private filenames, commands and application context.
+- Chat Unleashed has full local authority granted to the macOS account. It is not a sandbox.
+
+See [SECURITY.md](../SECURITY.md) for the complete security policy.

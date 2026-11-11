@@ -199,10 +199,10 @@ function resolvePath(p: string): string {
   return path.resolve(out);
 }
 
-function summarize(res: ToolResult): string {
-  const first = res.content.find((c): c is TextBlock => c.type === "text");
-  const value = first ? first.text : `${res.content.length} content block(s)`;
-  return value.length > 300 ? `${value.slice(0, 300)}...` : value;
+function summarizeForAudit(res: ToolResult): string {
+  const textBlocks = res.content.filter((c) => c.type === "text").length;
+  const imageBlocks = res.content.filter((c) => c.type === "image").length;
+  return `${res.isError ? "error" : "ok"}; text=${textBlocks}; image=${imageBlocks}`;
 }
 
 /** Run a tool body, capturing outcome + duration into the audit log. Never throws.
@@ -218,13 +218,13 @@ async function audited(name: string, args: unknown, fn: () => Promise<ToolResult
       tool: name,
       args,
       ok: !res.isError,
-      summary: summarize(res),
+      summary: summarizeForAudit(res),
       durationMs: Date.now() - started,
     });
     return res;
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
-    audit({ event: "tool", tool: name, args, ok: false, summary: message, durationMs: Date.now() - started });
+    audit({ event: "tool", tool: name, args, ok: false, summary: `exception: ${(err as Error)?.name ?? "Error"}`, durationMs: Date.now() - started });
     return text(`ERROR: ${message}`, true);
   } finally {
     release?.();
@@ -354,7 +354,7 @@ export function createServer(): McpServer {
         env: z.record(z.string(), z.string()).optional().describe("Extra environment variables for this command."),
         maxOutputKB: z.number().int().min(16).max(5120).optional().describe("Per stdout/stderr capture budget in KiB (default 200). Head and tail are preserved when truncated."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ command, cwd, timeoutSeconds, env, maxOutputKB }) =>
       audited("run_command", { command, cwd, timeoutSeconds, env, maxOutputKB }, async () => {
@@ -428,7 +428,7 @@ export function createServer(): McpServer {
         content: z.string().describe("Full text contents of the file"),
         overwrite: z.boolean().optional().describe("Replace an existing file (default false)"),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ path: filePath, content, overwrite }) =>
       audited("write_file", { path: filePath, overwrite, bytes: content.length }, async () => {
@@ -457,7 +457,7 @@ export function createServer(): McpServer {
           .describe("Destination file path (~ or absolute). Defaults to ~/Downloads/<filename>."),
         overwrite: z.boolean().optional().describe("Replace an existing file at destPath (default false)."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ url, destPath, overwrite }) =>
       audited("download_file", { url, destPath, overwrite }, async () => {
@@ -3192,14 +3192,14 @@ export function createServer(): McpServer {
     "app_config",
     "Saved settings",
     "Read and edit this Mac's saved settings - paths, device name, screenshot format and size, shell timeouts, extra " +
-      "allowed folders, API keys. Stored on this machine only; secrets are masked unless you ask for reveal.",
+      "API keys. Stored on this machine only; secrets are masked unless you ask for reveal.",
     {
       action: z.enum(["get", "set", "unset", "patch", "reset", "path", "schema", "reveal"]),
       key: z.string().optional().describe("Dot path, e.g. 'paths.screenshots' or 'shell.defaultTimeoutSeconds'."),
       value: z.any().optional().describe("set: the new value (string, number, boolean, list or object)."),
       patch: z.record(z.string(), z.any()).optional().describe("patch: an object merged into the settings."),
     },
-    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     async (args) => {
       const action = String(args.action ?? "get");
       if (action === "path") return { ok: true, message: configPath() };
@@ -3417,7 +3417,7 @@ export function createServer(): McpServer {
       backup: z.string().optional().describe("For restore: the backup label. Defaults to the newest."),
       limit: z.number().int().min(1).max(5000).optional().describe("For backups: maximum recent backups to return (default 100)."),
     },
-    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     async (args) => {
       try {
         if (args.action === "qa") {
@@ -3489,7 +3489,7 @@ export function createServer(): McpServer {
       checks: z.array(z.string()).optional().describe("write: known validation commands or acceptance checks."),
       maxChars: z.number().int().min(2000).max(100000).optional().describe("Maximum returned characters (default 40000)."),
     },
-    { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     async (args) => {
       try {
         const r = await projectContext({
@@ -3506,7 +3506,7 @@ export function createServer(): McpServer {
   addTool(
     "project_review",
     "Deterministic pre-ship review gate",
-    "Reviews the current project before declaring work done. quick checks git whitespace errors, unresolved conflict markers, suspicious credentials, oversized changed files and TODO/FIXME/HACK markers. full additionally runs detected typecheck/lint/test/build commands; commands overrides the auto-detected checks. With includeDiff=true it also returns a bounded patch so the calling model can perform semantic review in the same turn.",
+    "Reviews the current project before declaring work done. quick checks git whitespace errors, unresolved conflict markers, suspicious credentials, oversized changed files and unfinished-work markers. full additionally runs detected typecheck/lint/test/build commands; commands overrides the auto-detected checks. With includeDiff=true it also returns a bounded patch so the calling model can perform semantic review in the same turn.",
     {
       root: z.string().optional().describe("Project/repository root. Defaults to the server working directory."),
       mode: z.enum(["quick", "full"]).optional().describe("quick is static-only; full also runs detected validation commands."),
@@ -3535,7 +3535,7 @@ export function createServer(): McpServer {
     "code_index",
     "Symbol index, symbol search and project summary",
     "build walks the repository and records every function, type, class, protocol and kernel declaration with its file and line, so later searches are instant and exact. " +
-      "find searches those declarations by name or file. summary reads the manifests, test layout, git state and TODO count, which is what a new contributor needs first.",
+      "find searches those declarations by name or file. summary reads the manifests, test layout, git state and unfinished-marker count, which is what a new contributor needs first.",
     {
       action: z.enum(["build", "find", "summary"]).describe("What to do."),
       root: z.string().optional().describe("Repository root. Defaults to the working directory."),
@@ -3568,7 +3568,7 @@ export function createServer(): McpServer {
         const lines = [
           `root: ${summary.root}`,
           `stack: ${summary.stack.language}${summary.stack.frameworks.length ? ` (${summary.stack.frameworks.join(", ")})` : ""}`,
-          `files: ${summary.files}, test files: ${summary.tests}, TODOs: ${summary.todos}`,
+          `files: ${summary.files}, test files: ${summary.tests}, unfinished markers: ${summary.todos}`,
         ];
         if (summary.stack.testCommand) lines.push(`test: ${summary.stack.testCommand}`);
         if (summary.stack.buildCommand) lines.push(`build: ${summary.stack.buildCommand}`);
@@ -3602,7 +3602,7 @@ export function createServer(): McpServer {
         .optional()
         .describe("For run: the commands that decide pass or fail, with an optional output pattern each must match."),
     },
-    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     async (args) => {
       try {
         if (args.action === "resources") {
@@ -3814,7 +3814,7 @@ ${output.slice(0, 4000)}` };
       limit: z.number().int().min(1).max(500).optional().describe("Maximum items to return."),
       engine: z.enum(["auto", "chromium", "safari"]).optional().describe("auto uses Chromium and falls back to Safari."),
     },
-    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     async (args) => {
       try {
         const result = await runWeb({

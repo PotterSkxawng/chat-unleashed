@@ -38,12 +38,6 @@ export interface AppConfig {
     defaultTimeoutSeconds: number;
     maxTimeoutSeconds: number;
   };
-  security: {
-    /** When true, destructive tools refuse and explain instead of acting. */
-    dryRun: boolean;
-    /** Extra directories tools may read/write beyond the defaults. */
-    allowedRoots: string[];
-  };
   integrations: {
     /** Free-form API keys the user adds; redacted on read. */
     secrets: Record<string, string>;
@@ -95,10 +89,6 @@ export function defaultConfig(): AppConfig {
       defaultTimeoutSeconds: 60,
       maxTimeoutSeconds: 600,
     },
-    security: {
-      dryRun: false,
-      allowedRoots: [],
-    },
     integrations: {
       secrets: {},
     },
@@ -118,10 +108,14 @@ function clone<T>(value: T): T {
 export function mergeConfig(base: unknown, patch: unknown, at = ""): unknown {
   if (!isPlainObject(patch)) throw new Error(`${at || "config"} must be an object`);
   const out: Record<string, unknown> = isPlainObject(base) ? { ...base } : {};
+  const allowUnknown = at === "integrations.secrets";
   for (const [key, value] of Object.entries(patch)) {
     if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     const where = at ? `${at}.${key}` : key;
     const current = out[key];
+    if (current === undefined && !allowUnknown) {
+      throw new Error(`${where} is not a recognized setting`);
+    }
     if (isPlainObject(value)) {
       out[key] = mergeConfig(isPlainObject(current) ? current : {}, value, where);
       continue;
@@ -171,6 +165,13 @@ export function loadConfig(): AppConfig {
     return defaults;
   }
   try {
+    // Older previews exposed security.allowedRoots/security.dryRun even though those
+    // values were never enforcement boundaries. Remove that known legacy block before
+    // strict schema merging so existing users keep their real settings.
+    if (isPlainObject(raw) && "security" in raw) {
+      raw = { ...raw };
+      delete (raw as Record<string, unknown>).security;
+    }
     const merged = mergeConfig(defaults, raw) as AppConfig;
     merged.version = CONFIG_VERSION;
     return merged;

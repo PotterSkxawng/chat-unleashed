@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { audit } from "./audit.js";
-import { loadConfig } from "./config.js";
+import { APP_VERSION, loadConfig } from "./config.js";
 import snapshot from "./cua-tools.json" with { type: "json" };
 
 export type CuaToolDef = {
@@ -239,7 +239,7 @@ function ensureStarted(): Promise<void> {
       {
         protocolVersion: "2025-06-18",
         capabilities: {},
-        clientInfo: { name: "local-agent-mcp", version: "0.2.0" },
+        clientInfo: { name: "local-agent-mcp", version: APP_VERSION },
       },
       startupMs,
     );

@@ -7,7 +7,7 @@ const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scr
 });
 const [manifest] = JSON.parse(output);
 const paths = new Set((manifest?.files ?? []).map((file) => file.path));
-const required = ["dist/index.js", "LICENSE", "README.md", "docs/TROUBLESHOOTING.md", "scripts/deploy-local.mjs", "scripts/deferred-update.mjs"];
+const required = ["dist/index.js", "LICENSE", "README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/TROUBLESHOOTING.md", "scripts/deploy-local.mjs", "scripts/deferred-update.mjs"];
 const forbidden = [...paths].filter((file) => /(^|\/)(\.env[^/]*|logs|\.ui-evidence|\.smoke[^/]*|\.test|\.stress|node_modules)(\/|$)|\.(?:pem|p12|key|sqlite|db|log)$/.test(file));
 const missing = required.filter((file) => !paths.has(file));
 if (missing.length || forbidden.length) {

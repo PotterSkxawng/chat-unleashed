@@ -19,6 +19,8 @@ const targeting = await load("targeting");
 const web = await load("web");
 const coding = await load("coding");
 const skills = await load("skills");
+const audit = await load("audit");
+const config = await load("config");
 
 let pass = 0;
 let fail = 0;
@@ -27,6 +29,30 @@ function check(name, ok, detail = "") {
   else fail += 1;
   console.log(`${ok ? "ok  " : "FAIL"}  ${name}${detail ? `  ${detail}` : ""}`);
 }
+
+const sanitized = audit.sanitizeAuditArgs({
+  env: { PATH: "/usr/bin", OPENAI_API_KEY: "sk" + "-" + "example-secret-value-that-must-not-log" },
+  authorization: "Bearer top-secret-value-123456789",
+  nested: { token: "abc" + "123456789", note: "safe" },
+  command: "curl 'https://example.test/?api_key=supersecretvalue'",
+  text: "private text typed into an app",
+  body: "private note body",
+});
+const sanitizedConfig = audit.sanitizeAuditArgs({ action: "set", key: "integrations.secrets.example", value: "very-secret-value" });
+const sanitizedText = JSON.stringify({ sanitized, sanitizedConfig });
+check("audit redacts environment values", sanitized.env.PATH === "[REDACTED]" && sanitized.env.OPENAI_API_KEY === "[REDACTED]");
+check("audit redacts secret-named fields", sanitized.authorization === "[REDACTED]" && sanitized.nested.token === "[REDACTED]");
+check("audit redacts private content fields", String(sanitized.text).startsWith("[REDACTED CONTENT") && String(sanitized.body).startsWith("[REDACTED CONTENT"));
+check("audit redacts config values at secret paths", sanitizedConfig.value === "[REDACTED]");
+check("audit redacts secrets embedded in strings", !sanitizedText.includes("supersecretvalue") && !sanitizedText.includes("very-secret-value") && sanitizedText.includes("[REDACTED]"));
+
+check("config rejects unknown settings", (() => {
+  try { config.mergeConfig(config.defaultConfig(), { madeUpSetting: true }); return false; } catch { return true; }
+})());
+check("config keeps free-form integration secret names", (() => {
+  const merged = config.mergeConfig(config.defaultConfig(), { integrations: { secrets: { exampleService: "x" } } });
+  return merged.integrations.secrets.exampleService === "x";
+})());
 
 const saveButton = { role: "AXButton", title: "Save", path: "0.2.1", actions: ["AXPress"], enabled: true, position: { x: 10, y: 10 }, size: { width: 60, height: 24 }, depth: 3 };
 const saveLabel = { role: "AXStaticText", title: "Save", path: "0.2.0", depth: 4 };
@@ -171,7 +197,7 @@ check("symbol search is case insensitive", found.hits.length === 1 && found.hits
 fs.rmSync(dir, { recursive: true, force: true });
 
 console.log(`\n${pass} passed, ${fail} failed`);
-for (const module of ["targeting", "web", "coding", "skills"]) {
+for (const module of ["targeting", "web", "coding", "skills", "audit", "config"]) {
   fs.rmSync(path.join(root, ".test", `${module}.js`), { force: true });
 }
 try { fs.rmdirSync(path.join(root, ".test")); } catch {}

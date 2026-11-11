@@ -42,10 +42,13 @@ const personalNeedles = [
 
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\bghp_[A-Za-z0-9]{20,}\b/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\bgithub_pat_[A-Za-z0-9_]{30,}\b/,
   /\bsk-[A-Za-z0-9_-]{20,}\b/,
   /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
+  /\btunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}\b/,
+  /CONTROL_PLANE_API_KEY\s*=\s*["']?[^"'\s$<]{16,}/,
 ];
 
 function walk(dir) {

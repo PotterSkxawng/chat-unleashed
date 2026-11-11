@@ -28,11 +28,11 @@
     "smoke:project": "node scripts/smoke-project.mjs",
     "stress:scale": "npm run build:stress-fixtures --silent && node scripts/stress-scale.mjs",
     "stress:http": "node scripts/stress-http.mjs",
-    "build:test-fixtures": "esbuild src/targeting.ts src/web.ts src/coding.ts src/skills.ts --bundle --platform=node --format=esm --outdir=.test --log-level=warning",
+    "build:test-fixtures": "esbuild src/targeting.ts src/web.ts src/coding.ts src/skills.ts src/audit.ts src/config.ts --bundle --platform=node --format=esm --outdir=.test --log-level=warning",
     "build:stress-fixtures": "esbuild src/store.ts src/large-text.ts src/exec.ts src/coding.ts src/tasks.ts src/capacity.ts src/skills.ts --bundle --platform=node --format=esm --target=node20 --outdir=.stress --log-level=warning",
     "stress:files": "node scripts/stress-files.mjs",
     "stress:all": "npm run stress:scale --silent && npm run stress:http --silent && npm run stress:files --silent",
-    "validate:release": "npm run clean:fixtures --silent && npm run build --silent && npm run check:public --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run clean:fixtures --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent",
+    "validate:release": "npm run clean:fixtures --silent && npm run build --silent && npm run check:public --silent && npm run check:history --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run clean:fixtures --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent && npm run test:cli --silent && npm run test:audit --silent",
     "install:local": "npm run build && npm run deploy:local",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate:release",
@@ -45,7 +45,10 @@
     "update:check": "node scripts/deferred-update.mjs check",
     "update:cancel": "node scripts/deferred-update.mjs cancel",
     "test:updater": "node scripts/test-deferred-update.mjs",
-    "clean:fixtures": "node -e \"for (const p of ['.test','.stress']) require('fs').rmSync(p,{recursive:true,force:true})\""
+    "clean:fixtures": "node -e \"for (const p of ['.test','.stress']) require('fs').rmSync(p,{recursive:true,force:true})\"",
+    "test:cli": "node scripts/test-cli.mjs",
+    "test:audit": "node scripts/test-audit.mjs",
+    "check:history": "node scripts/check-history.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -65,13 +68,25 @@
   ],
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "macos",
     "apple-silicon",
     "automation",
+    "macos-automation",
+    "desktop-automation",
+    "browser-automation",
+    "computer-use",
+    "ai-agent",
+    "agentic-ai",
+    "chatgpt",
+    "openai",
     "iwork",
     "pages",
     "numbers",
-    "keynote"
+    "keynote",
+    "typescript",
+    "developer-tools"
   ],
   "files": [
     "dist/",
@@ -80,7 +95,12 @@
     "docs/",
     "scripts/deploy-local.mjs",
     "scripts/deferred-update.mjs",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "SUPPORT.md",
+    "CODE_OF_CONDUCT.md",
+    "GOVERNANCE.md"
   ],
   "repository": {
     "type": "git",

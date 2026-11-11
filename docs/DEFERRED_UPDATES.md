@@ -1,59 +1,93 @@
 # Deferred, tunnel-preserving updates
 
-The updater stages a validated local MCP bundle, waits for an extended period without tool traffic, and replaces **only the separately supervised local HTTP MCP server**. It does not restart the Secure MCP Tunnel or modify its credentials, profile, binary or LaunchAgent. This is intentionally narrower than a tunnel-client software upgrade: a silent remote queue cannot prove that every ChatGPT connector session is closed.
+Chat Unleashed updates the local MCP server without restarting the Secure MCP Tunnel. The normal CLI update path builds and stages a candidate, then an independent local watcher waits for a quiet window before replacing only the server process.
 
-## One-time setup
+This is intentionally narrower than upgrading `tunnel-client`. A tunnel restart can invalidate remote connector sessions even when no request is currently in flight.
 
-The local HTTP MCP server and tunnel must already have working, **independent** launchd services. The default server label is `com.local-agent-mcp.server`. The server executable should be the installed bundle at `~/.local/share/local-agent-mcp/dist/index.js` and its private HTTP port is 3344 by default. The tunnel health listener is assumed to be on loopback port 8080. All settings are configurable at install time through the environment variables listed below.
+## Normal use
 
-From a source checkout on an Apple Silicon Mac with Node.js 20.11.1 or newer:
+On a setup created by the current CLI, the updater watcher is installed automatically.
 
-```bash
-npm run validate:release
+To update from `origin/main`:
+
+```sh
+chat-unleashed update
+```
+
+The command:
+
+1. fetches `origin/main`,
+2. fast-forwards the checkout,
+3. installs dependencies from the lockfile,
+4. builds the candidate bundle,
+5. verifies the updater is installed,
+6. stages the candidate after an isolated startup preflight.
+
+The running MCP server and tunnel are not restarted during those steps.
+
+Management commands:
+
+```sh
+chat-unleashed update --status
+chat-unleashed update --cancel
+chat-unleashed update --stage
+```
+
+`--stage` builds and stages the current checkout without pulling from GitHub. `--cancel` removes a pending candidate without touching the live server.
+
+The equivalent lower-level npm commands remain available for development:
+
+```sh
 npm run update:install
 npm run update:stage
 npm run update:status
+npm run update:check
+npm run update:cancel
 ```
-
-`update:install` installs a small standalone watchdog under the per-user runtime directory and registers `com.local-agent-mcp.updater` with launchd. It runs its read-only idle check every 60 seconds. Neither the tunnel nor the MCP server is restarted during installation. The watchdog does nothing until a bundle has been staged.
-
-`update:stage` checks JavaScript syntax, starts the candidate as a separate HTTP MCP server with temporary private state, verifies that it reports healthy, and copies the bytes into a content-addressed staging directory. It records SHA-256 and a new quiet-window start time. It does **not** overwrite the installed bundle or stop any process. A later stage supersedes an earlier pending candidate.
-
-A successful `npm run validate:release` is required before staging a release candidate. Syntax checking and isolated startup alone are not substitutes for integration and stress tests.
 
 ## How a candidate becomes active
 
-On each scheduled run, the watchdog requires:
+The watcher runs a read-only check every 60 seconds. Activation is allowed only when all of the following are true:
 
-- The local MCP `/health` endpoint is healthy with no active/queued tools or HTTP requests.
-- The tunnel's detailed `/health` endpoint is healthy with no active dispatchers, queued commands or response deliveries.
-- At least 20 minutes have passed since the stage was created, the most recent observable tunnel activity, the latest local audit entry, and either process's startup.
-- The live server LaunchAgent is registered and its command points at the expected installed bundle.
-- The staged SHA-256 still matches, the candidate passes the isolated startup test again, and a second health sample shows no intervening remote traffic.
+- The local MCP health endpoint is healthy.
+- There are no active or queued local tools or HTTP requests.
+- The tunnel health endpoint is healthy.
+- There are no active remote dispatchers, queued commands or in-progress response deliveries.
+- At least 20 minutes have passed since the most recent observed activity and since the candidate was staged.
+- The live server LaunchAgent points at the expected installed runtime.
+- The staged SHA-256 still matches.
+- The candidate passes an isolated startup preflight again.
+- A second health sample shows no new activity during the final check.
 
-Missing or malformed telemetry **blocks** activation. A manual call through ChatGPT counts as activity, so inspecting or using the tool delays the quiet window. The watchdog's own direct loopback health probes do not count as MCP tool calls.
+Missing or malformed telemetry blocks activation. The updater fails closed rather than guessing that the system is idle.
 
-At cutover, it preserves the previous working bundle, atomically switches the installed file, and invokes `launchctl kickstart -k` on **only the local MCP server's** LaunchAgent. It verifies the new server PID and health while ensuring the tunnel remains ready with its original instance ID. If health verification fails, it restores the previous bundle, restarts only the local server again, records failure and stops retrying automatically.
+## Cutover and rollback
 
-**The tunnel process is never restarted by this updater.** Even after 20 minutes without calls, an open ChatGPT session might still exist. A rare new request arriving between the final probe and server restart can fail. The watcher minimizes this race but cannot promise zero interruption. This is safer than restarting the tunnel and breaking all active connector session handles.
+At cutover the updater:
 
-## Management
+1. preserves the previous working bundle,
+2. atomically installs the staged bundle,
+3. restarts only the local MCP server LaunchAgent,
+4. waits for a new healthy server PID,
+5. confirms that the tunnel is still ready with the same tunnel instance.
 
-```bash
-npm run update:status    # pending digest, last outcome and any defer reason
-npm run update:check     # one guarded check; does not force an update
-npm run update:cancel    # remove the pending update without touching the live server
-```
+If the replacement server fails verification, the updater restores the previous bundle, restarts only the server again, records the failure and stops retrying automatically.
 
-Do not manually restart the tunnel to force an update. The process will transition on its own when a quiet window is observed. For an intentionally urgent cutover, arrange a time when no client will call Local Mac and use the normal launchd service management outside an active ChatGPT session.
+The tunnel process is not restarted by this updater.
 
-If a prior activation was interrupted, the watchdog blocks further automatic restarts. Inspect the server and tunnel, confirm whether the new or prior bundle is installed, and stage a known-good release again. The last successful local bundle is retained as `dist/index.js.previous`. Failed activations are not retried in a loop.
+A rare request can still arrive during the short server replacement window. The quiet-window checks minimize that race but cannot prove that every remote connector session is closed.
 
-## Portability and service configuration
+## Explicit service restarts
 
-The watcher is independent of the repository after installation. It uses the current Node executable discovered during installation and stores its own configuration in the per-user LaunchAgent; no personal username, chip generation, tunnel ID, or secret is published in the source. It uses app-local data directories (private to the current user) and never needs the tunnel control-plane API key.
+`chat-unleashed restart` is deliberately different from `chat-unleashed update`. It restarts both the local server and tunnel. Use it for deliberate troubleshooting or maintenance, not as the normal software-update path during an active ChatGPT session.
 
-The following optional variables can be set when installing the watcher:
+Do not restart the tunnel merely to force a staged server update.
+
+## Service configuration
+
+The watcher is independent of the repository after installation. It stores its own copy under the per-user runtime directory and uses the Node executable resolved during installation.
+
+Defaults:
 
 | Variable | Default |
 | --- | --- |
@@ -62,8 +96,8 @@ The following optional variables can be set when installing the watcher:
 | `LOCAL_AGENT_SERVER_LABEL` | `com.local-agent-mcp.server` |
 | `LOCAL_AGENT_SERVER_HEALTH_URL` | `http://127.0.0.1:3344/health` |
 | `LOCAL_AGENT_TUNNEL_HEALTH_URL` | `http://127.0.0.1:8080/health?details=true` |
-| `LOCAL_AGENT_MCP_HOME` | macOS `~/Library/Application Support/local-agent-mcp` for audit/activity |
+| `LOCAL_AGENT_MCP_HOME` | `~/Library/Application Support/local-agent-mcp` |
 
-If your health ports or server job label differ, configure them **before** registering the watcher. The updater rejects non-loopback health URLs. The 20-minute quiet period is an intentionally conservative fixed release-policy default, not a promise that all ChatGPT sessions are disconnected.
+The updater rejects non-loopback health URLs. It never needs the tunnel control-plane API key.
 
-Upgrading `tunnel-client` itself should remain a separate, explicitly scheduled maintenance operation. A tunnel restart can terminate remote sessions even with zero current requests. Do not apply Homebrew upgrades or restart the tunnel from this watchdog.
+Upgrading `tunnel-client` itself remains separate maintenance. Schedule that change when interrupting tunnel sessions is acceptable.
