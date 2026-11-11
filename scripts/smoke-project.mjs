@@ -6,8 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const project = process.cwd();
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-project-smoke-"));
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-project-home-"));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-project-smoke-"));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-project-home-"));
 const repo = path.join(tmp, "repo");
 fs.mkdirSync(path.join(repo, "src", "deep"), { recursive: true });
 execFileSync("/usr/bin/git", ["init", "-q"], { cwd: repo });
@@ -24,7 +24,7 @@ const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.join(project, "dist/index.js"), "--stdio"],
   cwd: project,
-  env: { ...process.env, LOCAL_AGENT_MCP_HOME: home },
+  env: { ...process.env, CHAT_UNLEASHED_HOME: home },
 });
 const client = new Client({ name: "project-smoke", version: "1" });
 await client.connect(transport);
@@ -59,6 +59,16 @@ try {
 
   r = await call("project_review", { root: repo, mode: "quick" });
   check("clean repo passes review", r.ok && r.text.startsWith("PASS:"), r.text);
+
+  fs.writeFileSync(path.join(repo, "src", "deep", "file.ts"), "export const marker = /\\b(TODO|FIXME|HACK)\\b/g;\n");
+  r = await call("project_review", { root: repo, mode: "quick" });
+  check("review ignores unfinished-marker words inside a regex literal", r.ok && r.text.startsWith("PASS:"), r.text);
+  execFileSync("/usr/bin/git", ["checkout", "--", "src/deep/file.ts"], { cwd: repo });
+
+  fs.writeFileSync(path.join(repo, "src", "deep", "file.ts"), "// TODO: replace this placeholder\nexport const value = 1;\n");
+  r = await call("project_review", { root: repo, mode: "quick" });
+  check("review still reports a real unfinished comment", r.ok && r.text.startsWith("WARN:") && r.text.includes("TODO:"), r.text);
+  execFileSync("/usr/bin/git", ["checkout", "--", "src/deep/file.ts"], { cwd: repo });
 
   fs.writeFileSync(path.join(repo, "src", "deep", "file.ts"), "export const value = 2;\n");
   r = await call("project_review", { root: repo, mode: "quick", includeDiff: true });

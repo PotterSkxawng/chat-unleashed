@@ -7,10 +7,10 @@ This reference covers saved settings, the local settings API, and macOS permissi
 Chat Unleashed stores its settings at:
 
 ```text
-~/Library/Application Support/local-agent-mcp/config.json
+~/Library/Application Support/Chat Unleashed/config.json
 ```
 
-Tests and advanced deployments can override that location with `LOCAL_AGENT_MCP_HOME`. The tunnel client stores its own profile and credential separately; neither belongs in the repository.
+Tests and advanced deployments can override that location with `CHAT_UNLEASHED_HOME`. The tunnel client stores its own profile and credential separately; neither belongs in the repository.
 
 On first run, Chat Unleashed creates the config from defaults and writes it atomically with mode `0600`. The file contains the device name, workspace/download/screenshot paths, screenshot format and size, shell timeouts, the Computer Use plugin location, and any API keys you add.
 

@@ -143,9 +143,10 @@ function saveMemory(memory: ProjectMemory): void {
   fs.renameSync(tmp, file);
 }
 
-async function gitText(root: string, args: string[], maxBytes = 80_000): Promise<string> {
+async function gitText(root: string, args: string[], maxBytes = 80_000, preserveLeading = false): Promise<string> {
   const r = await run("/usr/bin/git", ["-C", root, ...args], { timeoutMs: 15_000, maxBytes });
-  return r.ok ? r.out.trim() : "";
+  if (!r.ok) return "";
+  return preserveLeading ? r.out.trimEnd() : r.out.trim();
 }
 
 function packageChecks(root: string): string[] {
@@ -291,6 +292,33 @@ function looksBinary(file: string): boolean {
   }
 }
 
+function hasUnfinishedMarker(line: string): boolean {
+  const marker = /\b(?:TODO|FIXME|HACK)\b/;
+  const trimmed = line.trimStart();
+  if (/^(?:TODO|FIXME|HACK)\b/.test(trimmed)) return true;
+  if (/^(?:\/\/|\/\*|\*|#|<!--)/.test(trimmed)) return marker.test(trimmed);
+
+  let quote: string | null = null;
+  let escaped = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '/' && (next === '/' || next === '*')) return marker.test(line.slice(i + 2));
+    if (char === '#' && (i === 0 || /\s/.test(line[i - 1]))) return marker.test(line.slice(i + 1));
+  }
+  return false;
+}
+
 function scanFile(file: string, root: string): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -302,7 +330,7 @@ function scanFile(file: string, root: string): { errors: string[]; warnings: str
     if (looksBinary(file)) return { errors, warnings };
     // git diff --check remains the authoritative conflict/whitespace gate.
     // Avoid loading giant generated/text artifacts into the MCP process just
-    // for heuristic TODO/secret scanning.
+    // for heuristic unfinished-marker and secret scanning.
     if (st.size > 8 * 1024 * 1024) {
       warnings.push(`${rel}: heuristic content scan skipped above 8 MiB; rely on diff/check-specific tooling`);
       return { errors, warnings };
@@ -315,7 +343,7 @@ function scanFile(file: string, root: string): { errors: string[]; warnings: str
       if (/\b(?:api[_-]?key|secret|token|password)\s*[:=]\s*["\x27][^"\x27]{12,}["\x27]/i.test(line) && !/example|dummy|test|placeholder/i.test(line)) {
         warnings.push(`${rel}:${i + 1}: possible hard-coded credential`);
       }
-      if (/\b(?:TODO|FIXME|HACK)\b/.test(line)) warnings.push(`${rel}:${i + 1}: ${line.trim().slice(0, 140)}`);
+      if (hasUnfinishedMarker(line)) warnings.push(`${rel}:${i + 1}: ${line.trim().slice(0, 140)}`);
     });
   } catch {
     /* file may have been deleted */
@@ -334,7 +362,7 @@ export async function projectReview(opts: ProjectReviewOptions): Promise<Outcome
   if (opts.paths?.length) {
     files = opts.paths.map((p) => path.resolve(root, p)).filter((p) => inside(root, p));
   } else if (git) {
-    const status = await gitText(root, ["status", "--porcelain=v1", "-uall"], 200_000);
+    const status = await gitText(root, ["status", "--porcelain=v1", "-uall"], 200_000, true);
     files = changedFilesFromStatus(root, status);
     const diffCheck = await run("/usr/bin/git", ["-C", root, "diff", "--check"], { timeoutMs: 15_000 });
     if (!diffCheck.ok || diffCheck.out.trim()) errors.push(`git diff --check:\n${(diffCheck.out || diffCheck.err).trim()}`);

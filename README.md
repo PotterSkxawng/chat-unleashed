@@ -14,7 +14,7 @@ Chat Unleashed is an open-source MCP server that lets ChatGPT run commands, work
 
 Chat is where most work starts, but normal Chat does not natively act on your Mac. Work and Codex can carry out agentic work, but they draw from a shared agentic usage allowance. Chat Unleashed closes that gap by giving normal Chat a local execution layer: the same conversation can reason about a task and then use MCP tools to do the work on your Mac.
 
-That separation is one of the main reasons Chat Unleashed exists: it turns the Chat experience you already use into a capable local agent without routing the work through the Work/Codex agentic pool. It is a particularly useful advantage to make use of now, while that distinction remains.
+That separation is one of the main reasons Chat Unleashed exists: it turns the Chat experience you already use into a capable local execution layer without routing the work through the Work/Codex agentic pool. It is a particularly useful advantage to make use of now, while that distinction remains.
 
 - [ChatGPT and Codex usage limits](https://help.openai.com/en/articles/20001625-understanding-chatgpt-and-codex-usage-limits)
 
@@ -171,7 +171,7 @@ See [Deferred, tunnel-preserving updates](docs/DEFERRED_UPDATES.md) for the full
 Saved configuration lives under:
 
 ```text
-~/Library/Application Support/local-agent-mcp/
+~/Library/Application Support/Chat Unleashed/
 ```
 
 The tunnel client keeps its profile and runtime credential in separate protected user locations. The server re-reads its settings on each tool call, so most configuration changes do not require a restart.
@@ -213,7 +213,7 @@ npm run validate:release
 
 CI runs on macOS and verifies the supported Node.js range. Some UI and Automation behavior still requires a real logged-in Mac with the corresponding macOS permissions.
 
-The repository intentionally does not publish `local-agent-mcp` to npm yet. Install from this GitHub checkout or a GitHub release.
+The repository intentionally does not publish `chat-unleashed` to npm yet. Install from this GitHub checkout or a GitHub release.
 
 ## License
 

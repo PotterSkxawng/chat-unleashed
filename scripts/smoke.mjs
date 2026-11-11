@@ -17,17 +17,17 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const here = path.dirname(fileURLToPath(import.meta.url));
 const project = path.resolve(here, "..");
 const filter = process.argv[2] ?? "";
-const smokeHome = process.env.LOCAL_AGENT_MCP_HOME ? null : fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-smoke-"));
+const smokeHome = process.env.CHAT_UNLEASHED_HOME ? null : fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-smoke-"));
 
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.join(project, "dist/index.js"), "--stdio"],
   cwd: project,
   stderr: "inherit",
-  env: { ...process.env, LOCAL_AGENT_MCP_HOME: process.env.LOCAL_AGENT_MCP_HOME ?? smokeHome },
+  env: { ...process.env, CHAT_UNLEASHED_HOME: process.env.CHAT_UNLEASHED_HOME ?? smokeHome },
 });
 
-const client = new Client({ name: "local-agent-mcp-smoke", version: "1.0.0" });
+const client = new Client({ name: "chat-unleashed-smoke", version: "1.0.0" });
 await client.connect(transport);
 
 const { tools } = await client.listTools();

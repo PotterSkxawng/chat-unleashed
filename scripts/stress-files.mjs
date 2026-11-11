@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const project = process.cwd();
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-files-scale-"));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-files-scale-"));
 const flat = path.join(temp, "flat");
 const home = path.join(temp, "home");
 fs.mkdirSync(flat, { recursive: true });
@@ -37,7 +37,7 @@ try {
     command: process.execPath,
     args: [path.join(project, "dist/index.js"), "--stdio"],
     cwd: project,
-    env: { ...process.env, LOCAL_AGENT_MCP_HOME: home },
+    env: { ...process.env, CHAT_UNLEASHED_HOME: home },
   });
   client = new Client({ name: "files-scale", version: "1" });
   await client.connect(transport);

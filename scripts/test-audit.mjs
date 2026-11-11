@@ -15,7 +15,7 @@ const transport = new StdioClientTransport({
   args: [path.join(root, "dist", "index.js"), "--stdio"],
   cwd: root,
   stderr: "pipe",
-  env: { ...process.env, LOCAL_AGENT_MCP_HOME: state },
+  env: { ...process.env, CHAT_UNLEASHED_HOME: state },
 });
 const client = new Client({ name: "audit-regression", version: "1" });
 

@@ -36,7 +36,7 @@ async function connect() {
     args: [path.join(project, "dist/index.js"), "--stdio"],
     cwd: project,
     stderr: "inherit",
-    env: { ...process.env, LOCAL_AGENT_MCP_HOME: home },
+    env: { ...process.env, CHAT_UNLEASHED_HOME: home },
   });
   const client = new Client({ name: "task-smoke", version: "1.0.0" });
   await client.connect(transport);

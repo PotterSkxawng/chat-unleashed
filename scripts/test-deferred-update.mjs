@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { evaluateIdleHealth, switchBundle } from "./deferred-update.mjs";
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-updater-test-"));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-updater-test-"));
 const now = Date.now();
 const past = new Date(now - 40 * 60_000).toISOString();
 const stagedAt = new Date(now - 30 * 60_000).toISOString();
@@ -118,7 +118,7 @@ try {
     const source = path.resolve("dist/index.js");
     const runtime = path.join(tmp, "Runtime With Spaces");
     const updates = path.join(tmp, "Update State");
-    const environment = { ...process.env, LOCAL_AGENT_RUNTIME_HOME: runtime, LOCAL_AGENT_UPDATER_HOME: updates };
+    const environment = { ...process.env, CHAT_UNLEASHED_RUNTIME_HOME: runtime, CHAT_UNLEASHED_UPDATER_HOME: updates };
     const stage = execFileSync(process.execPath, [runner, "stage", source], { env: environment, encoding: "utf8", timeout: 20000 });
     assert.match(stage, /Staged [a-f0-9]{64}/);
     assert.equal(fs.existsSync(path.join(runtime, "dist", "index.js")), false);
@@ -126,8 +126,8 @@ try {
     assert.equal(info.sha256, sha(source));
     assert.equal(sha(info.stagedPath), info.sha256);
     const checkResult = execFileSync(process.execPath, [runner, "check"], { env: {
-      ...environment, LOCAL_AGENT_SERVER_HEALTH_URL: "http://127.0.0.1:1/health",
-      LOCAL_AGENT_TUNNEL_HEALTH_URL: "http://127.0.0.1:1/health?details=true",
+      ...environment, CHAT_UNLEASHED_SERVER_HEALTH_URL: "http://127.0.0.1:1/health",
+      CHAT_UNLEASHED_TUNNEL_HEALTH_URL: "http://127.0.0.1:1/health?details=true",
     }, encoding: "utf8", timeout: 10000 });
     assert.match(checkResult, /Deferred: health unavailable/);
     assert.equal(fs.existsSync(path.join(runtime, "dist", "index.js")), false);

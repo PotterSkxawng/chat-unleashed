@@ -34,7 +34,7 @@ Files and web pages can contain prompt-injection attempts. Review unexpected too
 
 The runtime key stays in a protected local file. Audit logging redacts secret-looking keys, environment values, bearer tokens, common token formats, typed text, document bodies, form values, and other content-bearing arguments. Successful tool-result text is not copied into audit summaries.
 
-Audit logs can still contain private filenames, commands, summaries, and application context. The default retention is four files of up to 8 MiB each. `LOCAL_AGENT_AUDIT_MAX_BYTES` and `LOCAL_AGENT_AUDIT_KEEP` can change those limits.
+Audit logs can still contain private filenames, commands, summaries, and application context. The default retention is four files of up to 8 MiB each. `CHAT_UNLEASHED_AUDIT_MAX_BYTES` and `CHAT_UNLEASHED_AUDIT_KEEP` can change those limits.
 
 Screenshots, browser output, downloads, and task artifacts can also contain private information. Sanitize them before attaching anything to a public issue.
 

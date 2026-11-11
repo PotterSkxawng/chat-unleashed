@@ -48,7 +48,7 @@ export function parseLocator(input: string): Locator {
 }
 
 function binary(): string | undefined {
-  const override = process.env.LOCAL_AGENT_BROWSER_EXECUTABLE?.trim();
+  const override = process.env.CHAT_UNLEASHED_BROWSER_EXECUTABLE?.trim();
   if (override && fs.existsSync(override)) return path.resolve(override);
   for (const browser of BROWSER_APPS) {
     const app = findApplicationByBundleId(browser.bundleId, applicationCandidates(...browser.names));

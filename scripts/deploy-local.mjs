@@ -12,9 +12,9 @@ const project = path.resolve(import.meta.dirname, "..");
 const source = path.join(project, "dist", "index.js");
 if (!fs.existsSync(source)) throw new Error("dist/index.js is missing. Run npm run build first.");
 
-const root = process.env.LOCAL_AGENT_RUNTIME_HOME?.trim()
-  ? path.resolve(process.env.LOCAL_AGENT_RUNTIME_HOME)
-  : path.join(os.homedir(), ".local", "share", "local-agent-mcp");
+const root = process.env.CHAT_UNLEASHED_RUNTIME_HOME?.trim()
+  ? path.resolve(process.env.CHAT_UNLEASHED_RUNTIME_HOME)
+  : path.join(os.homedir(), ".local", "share", "chat-unleashed");
 const target = path.join(root, "dist", "index.js");
 const staged = path.join(path.dirname(target), `.index.js.${process.pid}.tmp`);
 const previous = `${target}.previous`;

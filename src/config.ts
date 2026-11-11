@@ -50,13 +50,13 @@ export const CONFIG_VERSION = 1;
 export const APP_VERSION = packageJson.version;
 
 export function appHome(): string {
-  const override = process.env.LOCAL_AGENT_MCP_HOME;
+  const override = process.env.CHAT_UNLEASHED_HOME;
   if (override && override.trim()) return path.resolve(override.trim());
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support", "local-agent-mcp");
+    return path.join(os.homedir(), "Library", "Application Support", "Chat Unleashed");
   }
   const xdg = process.env.XDG_CONFIG_HOME;
-  return path.join(xdg && xdg.trim() ? xdg : path.join(os.homedir(), ".config"), "local-agent-mcp");
+  return path.join(xdg && xdg.trim() ? xdg : path.join(os.homedir(), ".config"), "chat-unleashed");
 }
 
 export function configPath(): string {

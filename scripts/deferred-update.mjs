@@ -10,16 +10,16 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const packageRoot = path.resolve(path.dirname(scriptPath), "..");
-const runtimeRoot = path.resolve(process.env.LOCAL_AGENT_RUNTIME_HOME?.trim() || path.join(os.homedir(), ".local", "share", "local-agent-mcp"));
-const updateRoot = path.resolve(process.env.LOCAL_AGENT_UPDATER_HOME?.trim() || path.join(runtimeRoot, "updates"));
+const runtimeRoot = path.resolve(process.env.CHAT_UNLEASHED_RUNTIME_HOME?.trim() || path.join(os.homedir(), ".local", "share", "chat-unleashed"));
+const updateRoot = path.resolve(process.env.CHAT_UNLEASHED_UPDATER_HOME?.trim() || path.join(runtimeRoot, "updates"));
 const target = path.join(runtimeRoot, "dist", "index.js");
 const pendingFile = path.join(updateRoot, "pending.json");
 const statusFile = path.join(updateRoot, "last-status.json");
-const serverLabel = process.env.LOCAL_AGENT_SERVER_LABEL || "com.local-agent-mcp.server";
-const updaterLabel = "com.local-agent-mcp.updater";
+const serverLabel = process.env.CHAT_UNLEASHED_SERVER_LABEL || "com.chat-unleashed.server";
+const updaterLabel = "com.chat-unleashed.updater";
 const idleSeconds = 20 * 60;
-const serverEndpoint = process.env.LOCAL_AGENT_SERVER_HEALTH_URL || "http://127.0.0.1:3344/health";
-const tunnelEndpoint = process.env.LOCAL_AGENT_TUNNEL_HEALTH_URL || "http://127.0.0.1:8080/health?details=true";
+const serverEndpoint = process.env.CHAT_UNLEASHED_SERVER_HEALTH_URL || "http://127.0.0.1:3344/health";
+const tunnelEndpoint = process.env.CHAT_UNLEASHED_TUNNEL_HEALTH_URL || "http://127.0.0.1:8080/health?details=true";
 
 function ensureMac() {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
@@ -125,9 +125,9 @@ export function evaluateIdleHealth(server, tunnel, stagedAt, now = Date.now(), q
 }
 async function observe(manifest, now = Date.now(), quietMs = idleSeconds * 1000) {
   const [server, tunnel] = await Promise.all([fetchJson(serverEndpoint), fetchJson(tunnelEndpoint)]);
-  const stateHome = process.env.LOCAL_AGENT_MCP_HOME?.trim()
-    ? path.resolve(process.env.LOCAL_AGENT_MCP_HOME.trim())
-    : path.join(os.homedir(), "Library", "Application Support", "local-agent-mcp");
+  const stateHome = process.env.CHAT_UNLEASHED_HOME?.trim()
+    ? path.resolve(process.env.CHAT_UNLEASHED_HOME.trim())
+    : path.join(os.homedir(), "Library", "Application Support", "Chat Unleashed");
   const auditFile = path.join(stateHome, "logs", "audit.log");
   let lastAudit = 0;
   try { lastAudit = fs.statSync(auditFile).mtimeMs; } catch (e) { if (e?.code !== "ENOENT") throw e; }
@@ -145,9 +145,9 @@ async function preflight(bundle) {
   const syntax = spawnSync(process.execPath, ["--check", bundle], { encoding: "utf8", timeout: 15000 });
   if (syntax.status !== 0) throw new Error(`bundle syntax check failed: ${(syntax.stderr || "").slice(0, 500)}`);
   const port = await availablePort();
-  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-stage-"));
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-stage-"));
   const child = spawn(process.execPath, [bundle, "--http", "--port", String(port)], {
-    stdio: "ignore", env: { ...process.env, LOCAL_AGENT_MCP_HOME: scratch },
+    stdio: "ignore", env: { ...process.env, CHAT_UNLEASHED_HOME: scratch },
   });
   try {
     const until = Date.now() + 8000;
@@ -312,13 +312,13 @@ function installWatcher() {
   const plist = path.join(os.homedir(), "Library", "LaunchAgents", `${updaterLabel}.plist`);
   safeDir(path.dirname(plist));
   const envVars = {
-    LOCAL_AGENT_RUNTIME_HOME: runtimeRoot,
-    LOCAL_AGENT_UPDATER_HOME: updateRoot,
-    LOCAL_AGENT_SERVER_LABEL: serverLabel,
-    LOCAL_AGENT_SERVER_HEALTH_URL: assertLoopback(serverEndpoint),
-    LOCAL_AGENT_TUNNEL_HEALTH_URL: assertLoopback(tunnelEndpoint),
+    CHAT_UNLEASHED_RUNTIME_HOME: runtimeRoot,
+    CHAT_UNLEASHED_UPDATER_HOME: updateRoot,
+    CHAT_UNLEASHED_SERVER_LABEL: serverLabel,
+    CHAT_UNLEASHED_SERVER_HEALTH_URL: assertLoopback(serverEndpoint),
+    CHAT_UNLEASHED_TUNNEL_HEALTH_URL: assertLoopback(tunnelEndpoint),
   };
-  if (process.env.LOCAL_AGENT_MCP_HOME?.trim()) envVars.LOCAL_AGENT_MCP_HOME = path.resolve(process.env.LOCAL_AGENT_MCP_HOME.trim());
+  if (process.env.CHAT_UNLEASHED_HOME?.trim()) envVars.CHAT_UNLEASHED_HOME = path.resolve(process.env.CHAT_UNLEASHED_HOME.trim());
   const env = `<dict>${Object.entries(envVars).map(([key, value]) => `<key>${key}</key><string>${escapeXml(value)}</string>`).join("")}</dict>`;
   const xml = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>${updaterLabel}</string><key>ProgramArguments</key>${arrayXml([stableNodeExecutable(), script, "check"])}<key>EnvironmentVariables</key>${env}<key>RunAtLoad</key><false/><key>StartInterval</key><integer>60</integer><key>StandardOutPath</key><string>${escapeXml(log)}</string><key>StandardErrorPath</key><string>${escapeXml(log)}</string><key>ProcessType</key><string>Background</string></dict></plist>`;
   const prior = fs.existsSync(plist) ? fs.readFileSync(plist, "utf8") : null;

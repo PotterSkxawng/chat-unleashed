@@ -23,7 +23,7 @@ import { runTask } from "./orchestrator.js";
 function assertSupportedPlatform(): void {
   if (process.platform === "darwin" && process.arch === "arm64") return;
   process.stderr.write(
-    `local-agent-mcp supports Apple Silicon Macs (darwin-arm64); current platform is ${process.platform}-${process.arch}.\n`,
+    `Chat Unleashed supports Apple Silicon Macs (darwin-arm64); current platform is ${process.platform}-${process.arch}.\n`,
   );
   process.exit(1);
 }
@@ -91,7 +91,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
 
   try {
     if (req.method === "GET" && route === "/api/health") {
-      sendJson(res, 200, { ok: true, pid: process.pid, name: "local-agent-mcp", uptime: Math.round(process.uptime()) });
+      sendJson(res, 200, { ok: true, pid: process.pid, name: "chat-unleashed", uptime: Math.round(process.uptime()) });
       return;
     }
     if (req.method === "GET" && route === "/api/config") {
@@ -184,14 +184,13 @@ function parseArgs(argv: string[]): Cli {
     else if (arg === "--help" || arg === "-h") {
       process.stdout.write(
         [
-          "local-agent-mcp - local MCP server that lets ChatGPT Chat act on this Mac",
+          "Chat Unleashed MCP server",
           "",
           "Usage:",
-          "  local-agent-mcp                 serve over stdio (default)",
-          "  local-agent-mcp --stdio         serve over stdio",
-          "  local-agent-mcp --http          serve Streamable HTTP on 127.0.0.1",
-          "  local-agent-mcp --http --port 3344 --host 127.0.0.1",
-          "  local-agent-mcp --run-task <id> [--max-steps N]",
+          "  npm run stdio",
+          "  npm run http",
+          "  node dist/index.js --http --port 3344 --host 127.0.0.1",
+          "  node dist/index.js --run-task <id> [--max-steps N]",
           "                                  run a saved task with no MCP client attached",
           "",
         ].join("\n"),
@@ -295,7 +294,7 @@ async function main(): Promise<void> {
       res.end(JSON.stringify({
         ok: true,
         pid: process.pid,
-        name: "local-agent-mcp",
+        name: "chat-unleashed",
         uptime: Math.round(process.uptime()),
         toolCapacity: capacityStatus(),
         http: { active: httpInflight, maxActive: HTTP_MAX_INFLIGHT, peak: httpPeak, rejected: httpRejected, maxBodyBytes: MCP_MAX_BODY, bodyBytes: httpBodyBytes, peakBodyBytes: httpPeakBodyBytes, bodyBudgetBytes: HTTP_BODY_BUDGET },
@@ -430,7 +429,7 @@ async function main(): Promise<void> {
 
   audit({ event: "server_start", summary: `transport=http url=http://${cli.host}:${cli.port}/` });
   process.stdout.write(
-    `local-agent-mcp listening on http://${cli.host}:${cli.port}/ (Streamable HTTP MCP)\n` +
+    `Chat Unleashed listening on http://${cli.host}:${cli.port}/ (Streamable HTTP MCP)\n` +
       `health: http://${cli.host}:${cli.port}/health\n`,
   );
   const stop = (signal: "SIGINT" | "SIGTERM") => {

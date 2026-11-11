@@ -5,7 +5,7 @@
 //
 
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import readline from 'node:readline'
@@ -35,11 +35,13 @@ const MIN_NODE = [20, 11, 1]
 const HOME = process.env.HOME || homedir()
 const UID = typeof process.getuid === 'function' ? process.getuid() : 502
 
-const SHARE = join(HOME, '.local/share/local-agent-mcp')
+const SHARE = join(HOME, '.local/share/chat-unleashed')
 const ENV_FILE = join(SHARE, '.env.tunnel')
 const LOG_DIR = join(SHARE, 'logs')
 const CLIENT_CONFIG = join(HOME, '.config/tunnel-client')
 const AGENTS_DIR = join(HOME, 'Library/LaunchAgents')
+const SERVER_LABEL = 'com.chat-unleashed.server'
+const TUNNEL_LABEL = 'com.chat-unleashed.tunnel'
 
 const DEFAULT_PROFILE = 'local-mac'
 const MCP_URL_FALLBACK = 'http://127.0.0.1:3344/mcp'
@@ -249,20 +251,19 @@ function launchJob(label) {
   return { loaded: true, running: /state = running/.test(out), pid: pid ? Number(pid) : null }
 }
 
+function jobDefinition(label) {
+  const path = join(AGENTS_DIR, label + '.plist')
+  const text = readText(path)
+  if (!text) return null
+  const declared = (text.match(/<key>Label<\/key>\s*<string>([^<]+)<\/string>/) || [])[1]
+  return declared === label ? { label, path } : null
+}
+
 function findJobs() {
-  const jobs = { server: null, tunnel: null }
-  if (!existsSync(AGENTS_DIR)) return jobs
-  for (const file of readdirSync(AGENTS_DIR)) {
-    if (!file.endsWith('.plist')) continue
-    const path = join(AGENTS_DIR, file)
-    const text = readText(path) || ''
-    const label = (text.match(/<key>Label<\/key>\s*<string>([^<]+)<\/string>/) || [])[1]
-    if (!label) continue
-    if (label.includes('legacy')) continue // Preserve legacy setups
-    if (text.includes('tunnel-client') && text.includes(' run ')) jobs.tunnel = { label, path }
-    if (text.includes('local-agent-mcp') && text.includes('--http')) jobs.server = { label, path }
+  return {
+    server: jobDefinition(SERVER_LABEL),
+    tunnel: jobDefinition(TUNNEL_LABEL)
   }
-  return jobs
 }
 
 function parseProfile(text) {
@@ -369,7 +370,7 @@ async function probeMcp(url) {
       ok: true,
       status: init.status,
       tools: Array.isArray(tools) ? tools.length : null,
-      server: reply.result.serverInfo?.name || 'local-agent-mcp',
+      server: reply.result.serverInfo?.name || 'chat-unleashed',
       version: reply.result.serverInfo?.version || null,
       ms: Date.now() - started
     }
@@ -807,13 +808,13 @@ function ensureJobs(state) {
     const nodePath = which('node') || process.execPath
     const entry = state.dist.exists ? state.dist.path : (existsSync(join(PKG_ROOT, 'dist/index.js')) ? join(PKG_ROOT, 'dist/index.js') : null)
     if (!entry) return { created, error: 'Server bundle is not compiled (run npm run build first).' }
-    const path = join(AGENTS_DIR, 'com.local-agent-mcp.server.plist')
+    const path = join(AGENTS_DIR, SERVER_LABEL + '.plist')
     writeFileSync(path, plistServer(nodePath, entry), { mode: 0o644 })
     created.push(path)
   }
   if (!state.jobs.tunnel) {
     if (!state.client.installed) return { created, error: 'tunnel-client is missing (brew install openai/tools/tunnel-client).' }
-    const path = join(AGENTS_DIR, 'com.local-agent-mcp.tunnel.plist')
+    const path = join(AGENTS_DIR, TUNNEL_LABEL + '.plist')
     writeFileSync(path, plistTunnel(state.client.path), { mode: 0o644 })
     created.push(path)
   }
@@ -825,7 +826,7 @@ function plistServer(nodePath, entry) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.local-agent-mcp.server</string>
+  <key>Label</key><string>com.chat-unleashed.server</string>
   <key>ProgramArguments</key>
   <array>
     <string>${xmlEscape(nodePath)}</string>
@@ -854,7 +855,7 @@ function plistTunnel(clientPath) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.local-agent-mcp.tunnel</string>
+  <key>Label</key><string>com.chat-unleashed.tunnel</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -1055,7 +1056,7 @@ async function setup() {
           return 1
         }
         writeKeyToEnvFile(entered.trim())
-        line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/local-agent-mcp/.env.tunnel'))
+        line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/chat-unleashed/.env.tunnel'))
       }
     }
   } else {
@@ -1071,7 +1072,7 @@ async function setup() {
         return 1
       }
       writeKeyToEnvFile(entered.trim())
-      line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/local-agent-mcp/.env.tunnel'))
+      line(cGreen('✔ ') + 'Key saved securely in ' + cWhite('~/.local/share/chat-unleashed/.env.tunnel'))
     }
   }
 

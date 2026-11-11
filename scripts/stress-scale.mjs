@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "local-agent-scale-"));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "chat-unleashed-scale-"));
 const home = path.join(root, "home");
-process.env.LOCAL_AGENT_MCP_HOME = home;
+process.env.CHAT_UNLEASHED_HOME = home;
 
 let failures = 0;
 function check(name, ok, detail = "") {

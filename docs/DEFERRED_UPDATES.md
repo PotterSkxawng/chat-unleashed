@@ -91,12 +91,12 @@ Defaults:
 
 | Variable | Default |
 | --- | --- |
-| `LOCAL_AGENT_RUNTIME_HOME` | `~/.local/share/local-agent-mcp` |
-| `LOCAL_AGENT_UPDATER_HOME` | `<runtime>/updates` |
-| `LOCAL_AGENT_SERVER_LABEL` | `com.local-agent-mcp.server` |
-| `LOCAL_AGENT_SERVER_HEALTH_URL` | `http://127.0.0.1:3344/health` |
-| `LOCAL_AGENT_TUNNEL_HEALTH_URL` | `http://127.0.0.1:8080/health?details=true` |
-| `LOCAL_AGENT_MCP_HOME` | `~/Library/Application Support/local-agent-mcp` |
+| `CHAT_UNLEASHED_RUNTIME_HOME` | `~/.local/share/chat-unleashed` |
+| `CHAT_UNLEASHED_UPDATER_HOME` | `<runtime>/updates` |
+| `CHAT_UNLEASHED_SERVER_LABEL` | `com.chat-unleashed.server` |
+| `CHAT_UNLEASHED_SERVER_HEALTH_URL` | `http://127.0.0.1:3344/health` |
+| `CHAT_UNLEASHED_TUNNEL_HEALTH_URL` | `http://127.0.0.1:8080/health?details=true` |
+| `CHAT_UNLEASHED_HOME` | `~/Library/Application Support/Chat Unleashed` |
 
 The updater rejects non-loopback health URLs. It never needs the tunnel control-plane API key.
 

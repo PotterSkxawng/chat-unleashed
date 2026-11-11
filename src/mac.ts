@@ -1,4 +1,4 @@
-// General macOS automation for a local agent.
+// General macOS automation used by Chat Unleashed.
 //
 // Three deliberate omissions, all for the same reason - this server should not
 // surprise the person sitting in front of the Mac:

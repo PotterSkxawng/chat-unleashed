@@ -6,9 +6,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const project = path.resolve(import.meta.dirname, "..");
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), "local agent portability "));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "chat unleashed portability "));
 const home = path.join(temp, "Home With Spaces");
-const state = path.join(temp, "Application Support", "local-agent-mcp");
+const state = path.join(temp, "Application Support", "Chat Unleashed");
 fs.mkdirSync(home, { recursive: true });
 
 let failures = 0;
@@ -24,7 +24,7 @@ const transport = new StdioClientTransport({
   env: {
     ...process.env,
     HOME: home,
-    LOCAL_AGENT_MCP_HOME: state,
+    CHAT_UNLEASHED_HOME: state,
     PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
   },
 });
@@ -47,7 +47,7 @@ try {
 
   const configPath = await call("app_config", { action: "path" });
   check(
-    "runtime state respects LOCAL_AGENT_MCP_HOME with spaces",
+    "runtime state respects CHAT_UNLEASHED_HOME with spaces",
     configPath.ok && path.resolve(configPath.text.trim()) === path.resolve(path.join(state, "config.json")),
     configPath.text.trim(),
   );

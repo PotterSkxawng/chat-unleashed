@@ -192,7 +192,7 @@ function indexFile(root: string): string {
 type StoredIndex = { record: IndexRecord; symbols: SymbolHit[] };
 type CachedIndex = { mtimeMs: number; size: number; value: StoredIndex; usedAt: number };
 const INDEX_CACHE = new Map<string, CachedIndex>();
-const INDEX_CACHE_MAX_BYTES = Math.max(8 * 1024 * 1024, Math.min(Number(process.env.LOCAL_AGENT_INDEX_CACHE_BYTES ?? 96 * 1024 * 1024), 512 * 1024 * 1024));
+const INDEX_CACHE_MAX_BYTES = Math.max(8 * 1024 * 1024, Math.min(Number(process.env.CHAT_UNLEASHED_INDEX_CACHE_BYTES ?? 96 * 1024 * 1024), 512 * 1024 * 1024));
 
 function trimIndexCache(): void {
   let total = [...INDEX_CACHE.values()].reduce((n, item) => n + item.size, 0);
@@ -466,9 +466,9 @@ async function snapshotTree(root: string, label: string, message: string): Promi
   const env = {
     ...process.env,
     GIT_INDEX_FILE: tmp,
-    GIT_AUTHOR_NAME: "local-agent-mcp checkpoint",
+    GIT_AUTHOR_NAME: "Chat Unleashed checkpoint",
     GIT_AUTHOR_EMAIL: "checkpoint@localhost",
-    GIT_COMMITTER_NAME: "local-agent-mcp checkpoint",
+    GIT_COMMITTER_NAME: "Chat Unleashed checkpoint",
     GIT_COMMITTER_EMAIL: "checkpoint@localhost",
   };
   const call = (argv: string[]) => run("/usr/bin/git", ["-C", root, ...argv], { cwd: root, env, timeoutMs: 120_000 });

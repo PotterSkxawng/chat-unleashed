@@ -29,7 +29,7 @@ export function writeJsonAtomic(file: string, value: unknown): void {
       fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`, "utf8");
       // Atomic rename protects against process crashes. Full fsync is optional
       // because forcing it on every checkpoint destroys high-frequency throughput.
-      if (process.env.LOCAL_AGENT_FSYNC === "1") fs.fsyncSync(fd);
+      if (process.env.CHAT_UNLEASHED_FSYNC === "1") fs.fsyncSync(fd);
     } finally {
       fs.closeSync(fd);
     }

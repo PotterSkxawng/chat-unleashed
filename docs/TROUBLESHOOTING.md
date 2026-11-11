@@ -11,7 +11,7 @@ ChatGPT -> OpenAI Secure MCP Tunnel -> tunnel-client -> local MCP server on the 
 On the Mac:
 
 ```bash
-pgrep -fl 'tunnel-client|local-agent-mcp'
+pgrep -fl 'tunnel-client|chat-unleashed'
 curl --fail --max-time 3 http://127.0.0.1:3344/health
 tunnel-client doctor --profile local-mac --explain
 ```
@@ -49,7 +49,7 @@ Do not enter a restart loop. A local server restart cannot repair a ChatGPT conn
 Check the configured LaunchAgent, the tunnel log, and `chat-unleashed doctor`.
 
 ```bash
-launchctl list | grep local-agent-mcp
+launchctl list | grep chat-unleashed
 chat-unleashed logs tunnel
 chat-unleashed doctor
 ```

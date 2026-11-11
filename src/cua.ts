@@ -37,12 +37,12 @@ export const CUA_TOOL_NAMES: Set<string> = new Set(CUA_TOOLS.map((t) => t.name))
 /**
  * Where the Codex Computer Use plugin lives on this machine.
  * Overridable so a packaged build never depends on one user's layout:
- *   LOCAL_AGENT_CUA_PLUGIN_DIR  exact plugin directory
+ *   CHAT_UNLEASHED_CUA_PLUGIN_DIR  exact plugin directory
  *   CODEX_HOME                  root of the Codex install (default ~/.codex)
  *   app_config computerUse.pluginDir  same override, stored per machine
  */
 function pluginRoot(): string {
-  const direct = process.env.LOCAL_AGENT_CUA_PLUGIN_DIR?.trim();
+  const direct = process.env.CHAT_UNLEASHED_CUA_PLUGIN_DIR?.trim();
   if (direct) return path.resolve(direct);
   let fromConfig: string | null = null;
   try {
@@ -239,7 +239,7 @@ function ensureStarted(): Promise<void> {
       {
         protocolVersion: "2025-06-18",
         capabilities: {},
-        clientInfo: { name: "local-agent-mcp", version: APP_VERSION },
+        clientInfo: { name: "chat-unleashed", version: APP_VERSION },
       },
       startupMs,
     );

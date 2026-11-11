@@ -44,7 +44,7 @@ That keeps surrounding paragraphs where they are and preserves their formatting.
 `pages_styles` stores the default document look at:
 
 ```text
-~/.config/local-agent-mcp/pages-style.json
+~/Library/Application Support/Chat Unleashed/pages-style.json
 ```
 
 `pages_create` uses that default when no `style` is supplied.

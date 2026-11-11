@@ -441,19 +441,14 @@ export function variantOf(currentFont: string, bold: boolean, italic: boolean, f
  * property of this machine, not of each call.
  */
 const STYLE_CONFIG_PATH = path.join(appHome(), "pages-style.json");
-const LEGACY_STYLE_CONFIG_PATH = path.join(os.homedir(), ".config", "local-agent-mcp", "pages-style.json");
-
 export function loadDefaultStyle(): StyleSpec | undefined {
-  for (const file of [STYLE_CONFIG_PATH, LEGACY_STYLE_CONFIG_PATH]) {
-    try {
-      const raw = fs.readFileSync(file, "utf8");
-      const parsed = JSON.parse(raw) as StyleSpec;
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // Try the next location. The legacy path is read-only migration support.
-    }
+  try {
+    const raw = fs.readFileSync(STYLE_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw) as StyleSpec;
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 export function saveDefaultStyle(spec: StyleSpec): void {

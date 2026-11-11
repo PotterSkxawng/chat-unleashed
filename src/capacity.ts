@@ -13,9 +13,9 @@ function envInt(name: string, fallback: number, min: number, max: number): numbe
   return Number.isFinite(raw) ? Math.max(min, Math.min(max, Math.round(raw))) : fallback;
 }
 
-const MAX_ACTIVE = envInt("LOCAL_AGENT_MAX_INFLIGHT", DEFAULT_MAX_ACTIVE, 1, 128);
-const MAX_QUEUED = envInt("LOCAL_AGENT_MAX_QUEUE", DEFAULT_MAX_QUEUED, 0, 4096);
-const WAIT_MS = envInt("LOCAL_AGENT_QUEUE_WAIT_MS", DEFAULT_WAIT_MS, 100, 300_000);
+const MAX_ACTIVE = envInt("CHAT_UNLEASHED_MAX_INFLIGHT", DEFAULT_MAX_ACTIVE, 1, 128);
+const MAX_QUEUED = envInt("CHAT_UNLEASHED_MAX_QUEUE", DEFAULT_MAX_QUEUED, 0, 4096);
+const WAIT_MS = envInt("CHAT_UNLEASHED_QUEUE_WAIT_MS", DEFAULT_WAIT_MS, 100, 300_000);
 
 let active = 0;
 let rejected = 0;

@@ -12,8 +12,8 @@ function envInt(name: string, fallback: number, min: number, max: number): numbe
 
 // Audit history is useful for debugging, but tool arguments can contain private data.
 // Keep the default footprint small and let operators opt into longer retention.
-const MAX_LOG_BYTES = envInt("LOCAL_AGENT_AUDIT_MAX_BYTES", 8 * 1024 * 1024, 1024 * 1024, 1024 * 1024 * 1024);
-const KEEP_LOGS = envInt("LOCAL_AGENT_AUDIT_KEEP", 4, 1, 128);
+const MAX_LOG_BYTES = envInt("CHAT_UNLEASHED_AUDIT_MAX_BYTES", 8 * 1024 * 1024, 1024 * 1024, 1024 * 1024 * 1024);
+const KEEP_LOGS = envInt("CHAT_UNLEASHED_AUDIT_KEEP", 4, 1, 128);
 let approxBytes = -1;
 
 export interface AuditEntry {

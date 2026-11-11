@@ -1,5 +1,5 @@
 {
-  "name": "local-agent-mcp",
+  "name": "chat-unleashed",
   "version": "0.2.0-public-beta.1",
   "private": true,
   "description": "Chat Unleashed: a local MCP server that lets ChatGPT Chat act on an Apple Silicon Mac, with shell, files, native macOS UI, browser control, durable tasks and deep iWork automation.",
@@ -8,7 +8,6 @@
     "node": ">=20.11.1"
   },
   "bin": {
-    "local-agent-mcp": "dist/index.js",
     "chat-unleashed": "cli/chat-unleashed.mjs",
     "local-mac": "cli/chat-unleashed.mjs"
   },

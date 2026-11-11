@@ -79,4 +79,19 @@ check("setup validates platform and minimum Node before installation", () => {
   assert.match(source, /Node\.js 20\.11\.1 or newer required/);
 });
 
+check("background service discovery uses exact Chat Unleashed labels", () => {
+  const source = fs.readFileSync(cli, "utf8");
+  assert.match(source, /SERVER_LABEL = ['"]com\.chat-unleashed\.server['"]/);
+  assert.match(source, /TUNNEL_LABEL = ['"]com\.chat-unleashed\.tunnel['"]/);
+  assert.match(source, /server: jobDefinition\(SERVER_LABEL\)/);
+  assert.match(source, /tunnel: jobDefinition\(TUNNEL_LABEL\)/);
+  assert.doesNotMatch(source, /readdirSync\(AGENTS_DIR\)/);
+});
+
+check("package exposes Chat Unleashed plus the Local Mac alias only", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  assert.equal(pkg.name, "chat-unleashed");
+  assert.deepEqual(Object.keys(pkg.bin).sort(), ["chat-unleashed", "local-mac"]);
+});
+
 if (!process.exitCode) console.log(`CLI safety: ${passed} checks passed`);

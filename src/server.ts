@@ -305,7 +305,7 @@ const SKIP_DIR_NAMES = new Set([
 
 export function createServer(): McpServer {
   const server = new McpServer(
-    { name: "local-agent-mcp", version: APP_VERSION },
+    { name: "chat-unleashed", version: APP_VERSION },
     {
       instructions:
         "Chat Unleashed gives ChatGPT Chat full-access tools on the host Mac. Every tool call is written to the per-user audit log. " +
