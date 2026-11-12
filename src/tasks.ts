@@ -8,7 +8,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { appHome } from "./config.js";
-import { describeCheck, runCheck, type CheckSpec } from "./checks.js";
+import { describeCheck, runCheck, type CheckSpec, type CheckToolExecutor } from "./checks.js";
 import { toolMayBeDestructive } from "./registry.js";
 import { appendJsonl, listJson, readJson, readJsonl, writeJsonAtomic, ensureDir, isSafeFileId, safeFileId } from "./store.js";
 
@@ -397,6 +397,7 @@ export function dependenciesMet(task: Task, step: Step): boolean {
 export function blockReason(task: Task, step: Step): string | null {
   if (step.status === "done" || step.status === "skipped") return "already finished";
   if (step.status === "unverified") return "already executed without verification; add a check or re-queue it explicitly";
+  if (step.status === "failed") return "failed; re-queue it explicitly before another attempt";
   const missing = step.dependsOn.filter((id) => {
     const dep = stepById(task, id);
     return !dep || (dep.status !== "done" && dep.status !== "unverified" && dep.status !== "skipped");
@@ -459,7 +460,7 @@ export function readLog(taskId: string, limit = 40): Array<Record<string, unknow
 }
 
 /** Re-runs the acceptance criteria and records the evidence for each. */
-export async function evaluateAcceptance(task: Task): Promise<Acceptance[]> {
+export async function evaluateAcceptance(task: Task, executeTool?: CheckToolExecutor): Promise<Acceptance[]> {
   for (const entry of task.acceptance) {
     if (!entry.check) {
       entry.met = false;
@@ -467,7 +468,7 @@ export async function evaluateAcceptance(task: Task): Promise<Acceptance[]> {
       entry.checkedAt = now();
       continue;
     }
-    const result = await runCheck(entry.check);
+    const result = await runCheck(entry.check, 0, executeTool);
     entry.met = result.ok;
     entry.evidence = result.ok ? result.detail : `failed: ${result.detail}`;
     entry.checkedAt = now();

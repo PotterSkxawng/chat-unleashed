@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import http from "node:http";
+import readline from "node:readline";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { audit, flushAuditSync } from "./audit.js";
@@ -19,6 +20,12 @@ import {
 import { allStatus, diagnose, openPane, processIdentity, requestPermissions, type PermKind } from "./permissions.js";
 import { createServer } from "./server.js";
 import { runTask } from "./orchestrator.js";
+import { handlerFor } from "./registry.js";
+import {
+  TASK_WORKER_PREFIX,
+  type TaskWorkerRequest,
+  type TaskWorkerResponse,
+} from "./task-worker-protocol.js";
 
 function assertSupportedPlatform(): void {
   if (process.platform === "darwin" && process.arch === "arm64") return;
@@ -159,7 +166,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
 }
 
 interface Cli {
-  mode: "stdio" | "http";
+  mode: "stdio" | "http" | "task-worker";
   port: number;
   host: string;
   /** Headless task run: no MCP client, no conversation, just the plan on disk. */
@@ -173,6 +180,7 @@ function parseArgs(argv: string[]): Cli {
     const arg = argv[i];
     if (arg === "--http" || arg === "--http-server") cli.mode = "http";
     else if (arg === "--stdio") cli.mode = "stdio";
+    else if (arg === "--task-worker") cli.mode = "task-worker";
     else if (arg === "--run-task") cli.task = String(argv[++i] ?? "");
     else if (arg.startsWith("--run-task=")) cli.task = arg.slice(11);
     else if (arg === "--max-steps") cli.maxSteps = Number(argv[++i]);
@@ -211,7 +219,40 @@ function parseArgs(argv: string[]): Cli {
 
 const cli = parseArgs(process.argv.slice(2));
 
+async function runTaskWorkerMode(): Promise<void> {
+  process.env.CHAT_UNLEASHED_TASK_WORKER_PID = String(process.pid);
+  createServer();
+
+  const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    let request: TaskWorkerRequest;
+    try {
+      request = JSON.parse(line) as TaskWorkerRequest;
+    } catch {
+      continue;
+    }
+    const response: TaskWorkerResponse = { id: Number(request.id) };
+    try {
+      if (!Number.isInteger(request.id) || typeof request.tool !== "string" || !request.tool) {
+        throw new Error("invalid task worker request");
+      }
+      const handler = handlerFor(request.tool);
+      if (!handler) throw new Error(`unknown tool ${request.tool}`);
+      const result = await handler(request.args ?? {});
+      response.result = { ok: result.ok, message: result.message };
+    } catch (error) {
+      response.error = (error as Error).message;
+    }
+    process.stdout.write(`${TASK_WORKER_PREFIX}${JSON.stringify(response)}\n`);
+  }
+}
+
 async function main(): Promise<void> {
+  if (cli.mode === "task-worker") {
+    await runTaskWorkerMode();
+    return;
+  }
   if (cli.task) {
     audit({ event: "task_headless", summary: `task=${cli.task}` });
     // createServer() is what fills the in-process tool registry, so it has to

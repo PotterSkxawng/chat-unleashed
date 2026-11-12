@@ -142,6 +142,16 @@ function rpc(method: string, params: unknown, timeoutMs: number): Promise<Record
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
+      const taskWorkerPid = Number(process.env.CHAT_UNLEASHED_TASK_WORKER_PID);
+      if (
+        process.env.CHAT_UNLEASHED_TASK_WORKER === "1" &&
+        process.platform !== "win32" &&
+        Number.isInteger(taskWorkerPid) &&
+        taskWorkerPid > 1
+      ) {
+        try { process.kill(-taskWorkerPid, "SIGKILL"); } catch { /* already gone */ }
+        return;
+      }
       reject(new Error(`cua_repl timed out after ${timeoutMs}ms waiting for ${method}`));
     }, timeoutMs);
     pending.set(id, { resolve, reject, timer });

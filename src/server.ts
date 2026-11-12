@@ -61,7 +61,7 @@ import {
   type Task,
   type TaskInput,
 } from "./tasks.js";
-import { isRunning, runTask } from "./orchestrator.js";
+import { isRunning, runTask, stopTaskToolWorker, withTaskToolExecutor } from "./orchestrator.js";
 import { observe, summarizeScreen, uiDo } from "./planner.js";
 import { backupDocument, comparePdf, listBackups, qaPdf, restoreBackup } from "./docqa.js";
 import {
@@ -407,7 +407,10 @@ export function createServer(): McpServer {
         const captureBytes = Math.min(Math.max(maxOutputKB ?? 200, 16), 5120) * 1024;
 
         return await new Promise<ToolResult>((resolve) => {
-          const grouped = process.platform !== "win32";
+          const taskWorkerPid = Number(process.env.CHAT_UNLEASHED_TASK_WORKER_PID);
+          const inTaskWorkerTree =
+            process.env.CHAT_UNLEASHED_TASK_WORKER === "1" && Number.isInteger(taskWorkerPid) && taskWorkerPid > 1;
+          const grouped = process.platform !== "win32" && !inTaskWorkerTree;
           const child = spawn(command, {
             shell: true,
             cwd: workDir,
@@ -432,6 +435,10 @@ export function createServer(): McpServer {
 
           const timer = setTimeout(() => {
             timedOut = true;
+            if (inTaskWorkerTree && process.platform !== "win32") {
+              try { process.kill(-taskWorkerPid, "SIGKILL"); } catch { /* already gone */ }
+              return;
+            }
             signalTree("SIGTERM");
             const kill = setTimeout(() => signalTree("SIGKILL"), 3000);
             kill.unref();
@@ -4246,7 +4253,10 @@ ${output.slice(0, 4000)}` };
     async (args) => {
       try {
         const task = requireTask(String(args.id));
-        await evaluateAcceptance(task);
+        if (isRunning(task.id)) {
+          return { ok: false, message: `Cannot close ${task.id} while task_run is still active. Stop or let that run finish first.` };
+        }
+        await withTaskToolExecutor(task, (executeTool) => evaluateAcceptance(task, executeTool));
         const blockers = acceptanceBlockers(task);
         const unfinished = task.steps.filter((step) => step.status !== "done" && step.status !== "skipped");
         if ((blockers.length || unfinished.length) && args.force !== true) {
@@ -4264,6 +4274,7 @@ ${output.slice(0, 4000)}` };
             : "every acceptance criterion verified";
         saveTask(task);
         appendLog(task.id, { event: "closed", reason: task.closeReason });
+        stopTaskToolWorker(task.id);
         return { ok: true, message: `Closed ${task.id}. ${task.closeReason}.` };
       } catch (error) {
         return { ok: false, message: (error as Error).message };
@@ -4289,7 +4300,7 @@ ${output.slice(0, 4000)}` };
         }
         const task = requireTask(String(args.id));
         const stale = refreshStaleEvidence(task);
-        await evaluateAcceptance(task);
+        await withTaskToolExecutor(task, (executeTool) => evaluateAcceptance(task, executeTool));
         const verified = task.steps.filter((step) => step.status === "done").map((step) => step.id);
         const next = runnableSteps(task)[0];
         const gated = stepsNeedApproval(task);

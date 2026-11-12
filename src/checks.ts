@@ -9,7 +9,7 @@ import { resolveUserPath } from "./config.js";
 import { uiNodes, windowList } from "./computer.js";
 import { run, sh, truncate } from "./exec.js";
 import { qaPdf } from "./docqa.js";
-import { handlerFor, toolCanVerify } from "./registry.js";
+import { handlerFor, toolCanVerify, type ToolOutcome } from "./registry.js";
 
 export type CheckKind = "shell" | "file" | "absent" | "windowTitle" | "uiText" | "tool" | "wait" | "pdf";
 
@@ -43,6 +43,12 @@ export interface CheckResult {
   waitedMs: number;
 }
 
+export type CheckToolExecutor = (
+  name: string,
+  args: Record<string, unknown>,
+  timeoutMs: number,
+) => Promise<ToolOutcome>;
+
 function regex(pattern: string): RegExp | null {
   try {
     return new RegExp(pattern, "i");
@@ -55,11 +61,15 @@ function oneLine(value: string, limit = 220): string {
   return truncate(value.replace(/\s+/g, " ").trim(), limit);
 }
 
-async function checkOnce(spec: CheckSpec): Promise<{ ok: boolean; detail: string }> {
+async function checkOnce(
+  spec: CheckSpec,
+  executeTool?: CheckToolExecutor,
+  toolTimeoutMs = 120_000,
+): Promise<{ ok: boolean; detail: string }> {
   switch (spec.kind) {
     case "shell": {
       if (!spec.cmd) return { ok: false, detail: "shell check needs cmd" };
-      const result = await sh(spec.cmd, { cwd: spec.cwd ? resolveUserPath(spec.cwd) : undefined, timeoutMs: 120_000 });
+      const result = await sh(spec.cmd, { cwd: spec.cwd ? resolveUserPath(spec.cwd) : undefined, timeoutMs: toolTimeoutMs });
       const output = `${result.out}\n${result.err}`.trim();
       if (!result.ok) return { ok: false, detail: `exit ${result.code}: ${oneLine(output)}` };
       const wanted = spec.pattern ?? spec.expect;
@@ -117,7 +127,9 @@ async function checkOnce(spec: CheckSpec): Promise<{ ok: boolean; detail: string
       }
       const handler = handlerFor(spec.tool);
       if (!handler) return { ok: false, detail: `unknown tool ${spec.tool}` };
-      const result = await handler(spec.args ?? {});
+      const result = executeTool
+        ? await executeTool(spec.tool, spec.args ?? {}, toolTimeoutMs)
+        : await handler(spec.args ?? {});
       if (!result.ok) return { ok: false, detail: `${spec.tool} failed: ${oneLine(result.message)}` };
       if (spec.expect) {
         const re = regex(spec.expect);
@@ -130,7 +142,7 @@ async function checkOnce(spec: CheckSpec): Promise<{ ok: boolean; detail: string
     }
     case "wait": {
       if (!spec.until) return { ok: false, detail: "wait check needs until" };
-      return checkOnce(spec.until);
+      return checkOnce(spec.until, executeTool, toolTimeoutMs);
     }
     case "pdf": {
       if (!spec.path) return { ok: false, detail: "pdf check needs path" };
@@ -161,15 +173,24 @@ async function checkOnce(spec: CheckSpec): Promise<{ ok: boolean; detail: string
 }
 
 /** Runs a check, polling when the kind is `wait` or a timeout is supplied. */
-export async function runCheck(spec: CheckSpec, timeoutSeconds = 0): Promise<CheckResult> {
+export async function runCheck(
+  spec: CheckSpec,
+  timeoutSeconds = 0,
+  executeTool?: CheckToolExecutor,
+): Promise<CheckResult> {
   const started = Date.now();
   const limit = (spec.kind === "wait" ? (spec.seconds ?? 30) : timeoutSeconds) * 1000;
+  const defaultAttemptMs = 120_000;
   let last: { ok: boolean; detail: string } = { ok: false, detail: "not run" };
   do {
-    last = await checkOnce(spec);
+    const elapsed = Date.now() - started;
+    const remaining = limit > 0 ? Math.max(100, limit - elapsed) : defaultAttemptMs;
+    const attemptTimeoutMs = Math.min(defaultAttemptMs, remaining);
+    last = await checkOnce(spec, executeTool, attemptTimeoutMs);
     if (last.ok) return { ok: true, detail: last.detail, waitedMs: Date.now() - started };
-    if (Date.now() - started >= limit) break;
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (limit <= 0 || Date.now() - started >= limit) break;
+    const sleepMs = Math.min(300, Math.max(0, limit - (Date.now() - started)));
+    if (sleepMs > 0) await new Promise((resolve) => setTimeout(resolve, sleepMs));
   } while (true);
   return { ok: false, detail: last.detail, waitedMs: Date.now() - started };
 }

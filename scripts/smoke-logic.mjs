@@ -24,6 +24,7 @@ const skills = await load("skills");
 const audit = await load("audit");
 const config = await load("config");
 const ws = await load("ws");
+const orchestrator = await load("orchestrator");
 
 let pass = 0;
 let fail = 0;
@@ -185,6 +186,42 @@ oversizedSocket.close();
 oversizedFrameServer.server.close();
 check("websocket frames have a hard size cap", /frame exceeds/.test(String(oversizedError)), String(oversizedError));
 
+const hardHangDir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "cu-hard-hang-"));
+const hardHangWorker = path.join(hardHangDir, "worker.mjs");
+fs.writeFileSync(
+  hardHangWorker,
+  [
+    'import readline from "node:readline";',
+    'const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });',
+    'for await (const line of input) {',
+    '  if (!line.trim()) continue;',
+    '  while (true) {}',
+    '}',
+  ].join("\n"),
+);
+const oldWorkerEntry = process.env.CHAT_UNLEASHED_TASK_WORKER_ENTRY;
+process.env.CHAT_UNLEASHED_TASK_WORKER_ENTRY = hardHangWorker;
+const hardHangStarted = Date.now();
+let hardHangError = "";
+try {
+  await orchestrator.withIsolatedToolWorker(async (executeTool) => {
+    await executeTool("non_yielding_test_handler", {}, 500);
+  });
+} catch (error) {
+  hardHangError = error.message;
+} finally {
+  if (oldWorkerEntry === undefined) delete process.env.CHAT_UNLEASHED_TASK_WORKER_ENTRY;
+  else process.env.CHAT_UNLEASHED_TASK_WORKER_ENTRY = oldWorkerEntry;
+  fs.rmSync(hardHangDir, { recursive: true, force: true });
+}
+const hardHangElapsed = Date.now() - hardHangStarted;
+check(
+  "hard deadline kills a non-yielding in-process handler",
+  /hard task deadline/.test(hardHangError) && hardHangElapsed >= 400 && hardHangElapsed < 2_500,
+  String(hardHangElapsed) + "ms",
+);
+
+
 const tsSymbols = coding.parseSymbols(
   ["export function runTask(id: string) {", "class Task {", "  private helper() {", "export interface Step {", "type Kind = 'a' | 'b';", "const LIMIT = 5;"].join("\n"),
   "typescript",
@@ -262,7 +299,7 @@ check("project summary counts real TODO/FIXME markers", summary.todos === 2, `co
 fs.rmSync(dir, { recursive: true, force: true });
 
 console.log(`\n${pass} passed, ${fail} failed`);
-for (const module of ["targeting", "web", "coding", "skills", "audit", "config", "ws"]) {
+for (const module of ["targeting", "web", "coding", "skills", "audit", "config", "ws", "orchestrator"]) {
   fs.rmSync(path.join(root, ".test", `${module}.js`), { force: true });
 }
 try { fs.rmdirSync(path.join(root, ".test")); } catch {}

@@ -8,9 +8,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runCheck, type CheckResult } from "./checks.js";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { runCheck, type CheckResult, type CheckToolExecutor } from "./checks.js";
 import { sh, truncate } from "./exec.js";
-import { handlerFor } from "./registry.js";
+import { handlerFor, type ToolOutcome } from "./registry.js";
+import {
+  TASK_WORKER_PREFIX,
+  type TaskWorkerRequest,
+  type TaskWorkerResponse,
+} from "./task-worker-protocol.js";
 import { readJson, removeFile, safeFileId, writeJsonAtomic } from "./store.js";
 import {
   appendLog,
@@ -58,6 +65,302 @@ interface LockFile {
 }
 
 const activeLocks = new Set<string>();
+
+const STATEFUL_TASK_TOOLS = new Set(["shell_session", "js", "js_add_node_module_dir", "js_reset", "turn_ended"]);
+const MAX_RETAINED_TASK_WORKERS = 8;
+
+interface RetainedTaskWorker {
+  worker: IsolatedToolWorker;
+  lastUsed: number;
+  active: number;
+}
+
+const retainedTaskWorkers = new Map<string, RetainedTaskWorker>();
+
+interface PendingToolCall {
+  resolve: (value: ToolOutcome) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+class IsolatedToolWorker {
+  private child: ChildProcessWithoutNullStreams | null = null;
+  private buffer = "";
+  private nextId = 1;
+  private pending = new Map<number, PendingToolCall>();
+  private expectedExitPids = new Set<number>();
+  private watchdogs = new Map<number, ReturnType<typeof spawn>>();
+
+  private entry(): string {
+    const override = process.env.CHAT_UNLEASHED_TASK_WORKER_ENTRY?.trim();
+    if (override) return path.resolve(override);
+    return fileURLToPath(import.meta.url);
+  }
+
+  private ensureStarted(): ChildProcessWithoutNullStreams {
+    if (this.child && this.child.exitCode === null && !this.child.killed) return this.child;
+    const child = spawn(process.execPath, [this.entry(), "--task-worker"], {
+      cwd: process.cwd(),
+      env: { ...process.env, CHAT_UNLEASHED_TASK_WORKER: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+    this.child = child;
+    this.buffer = "";
+    let stderrTail = "";
+
+    const workerPid = child.pid;
+    if (process.platform !== "win32" && workerPid) {
+      const watchdog = spawn(
+        "/bin/sh",
+        ["-c", `cat >/dev/null; kill -KILL -${workerPid} 2>/dev/null || true`],
+        { stdio: ["pipe", "ignore", "ignore"], detached: true },
+      );
+      watchdog.unref();
+      (watchdog.stdin as (NodeJS.WritableStream & { unref?: () => void }) | null)?.unref?.();
+      this.watchdogs.set(workerPid, watchdog);
+    }
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      this.buffer += chunk;
+      if (this.buffer.length > 16 * 1024 * 1024) {
+        const error = new Error("task tool worker response exceeded 16 MiB");
+        this.failAll(error);
+        const pid = child.pid;
+        if (pid) this.expectedExitPids.add(pid);
+        if (this.child === child) this.child = null;
+        if (pid) this.killPidGroup(pid, "SIGKILL");
+        return;
+      }
+      let newline: number;
+      while ((newline = this.buffer.indexOf("\n")) >= 0) {
+        const line = this.buffer.slice(0, newline);
+        this.buffer = this.buffer.slice(newline + 1);
+        if (!line.startsWith(TASK_WORKER_PREFIX)) continue;
+        let response: TaskWorkerResponse;
+        try {
+          response = JSON.parse(line.slice(TASK_WORKER_PREFIX.length)) as TaskWorkerResponse;
+        } catch {
+          continue;
+        }
+        const waiter = this.pending.get(response.id);
+        if (!waiter) continue;
+        this.pending.delete(response.id);
+        clearTimeout(waiter.timer);
+        if (response.error) waiter.reject(new Error(response.error));
+        else if (response.result) waiter.resolve(response.result);
+        else waiter.reject(new Error("task tool worker returned an empty response"));
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderrTail = (stderrTail + chunk).slice(-16_000);
+    });
+    child.stdin.on("error", (error) => {
+      if (this.child === child) this.failAll(error);
+    });
+    child.on("error", (error) => {
+      if (this.child === child) {
+        this.child = null;
+        this.failAll(error);
+      }
+    });
+    child.on("exit", (code, signal) => {
+      const pid = child.pid;
+      const expected = pid ? this.expectedExitPids.delete(pid) : false;
+      const wasCurrent = this.child === child;
+      if (wasCurrent) this.child = null;
+      if (pid && !expected) this.killPidGroup(pid, "SIGKILL");
+      if (pid) this.stopWatchdog(pid);
+      if (!expected && wasCurrent) {
+        const detail = `task tool worker exited unexpectedly (code ${code ?? "null"}${signal ? `, signal ${signal}` : ""})`;
+        this.failAll(new Error(stderrTail ? `${detail}: ${stderrTail.slice(-1000)}` : detail));
+      }
+    });
+    return child;
+  }
+
+  private failAll(error: Error): void {
+    for (const [id, waiter] of this.pending) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+      this.pending.delete(id);
+    }
+  }
+
+  private stopWatchdog(workerPid: number): void {
+    const watchdog = this.watchdogs.get(workerPid);
+    if (!watchdog) return;
+    this.watchdogs.delete(workerPid);
+    try { watchdog.kill("SIGKILL"); } catch { /* already gone */ }
+  }
+
+  private killPidGroup(pid: number, signal: NodeJS.Signals): void {
+    try {
+      if (process.platform !== "win32") process.kill(-pid, signal);
+      else if (this.child?.pid === pid) this.child.kill(signal);
+    } catch {
+      if (this.child?.pid !== pid) return;
+      try {
+        this.child.kill(signal);
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  async call(name: string, args: Record<string, unknown>, timeoutMs: number): Promise<ToolOutcome> {
+    const child = this.ensureStarted();
+    const id = this.nextId++;
+    const request: TaskWorkerRequest = { id, tool: name, args };
+    return await new Promise<ToolOutcome>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new Error(`${name} exceeded its hard task deadline after ${Math.round(timeoutMs / 1000)}s`);
+        this.pending.delete(id);
+        reject(error);
+        this.failAll(new Error(`task tool worker terminated after ${name} exceeded its hard deadline`));
+        const workerPid = child.pid;
+        if (workerPid) {
+          this.expectedExitPids.add(workerPid);
+          this.stopWatchdog(workerPid);
+        }
+        if (this.child === child) this.child = null;
+        // This is a hard deadline, not normal shutdown. Kill the entire process
+        // group immediately so a handler that ignores SIGTERM gets no grace
+        // window in which it can keep mutating state.
+        if (workerPid) this.killPidGroup(workerPid, "SIGKILL");
+      }, Math.max(100, timeoutMs));
+      this.pending.set(id, { resolve, reject, timer });
+      try {
+        child.stdin.write(`${JSON.stringify(request)}\n`);
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error as Error);
+      }
+    });
+  }
+
+  stop(): void {
+    if (!this.child) return;
+    this.failAll(new Error("task tool worker stopped"));
+    const child = this.child;
+    this.child = null;
+    const workerPid = child.pid;
+    if (workerPid) {
+      this.expectedExitPids.add(workerPid);
+      this.stopWatchdog(workerPid);
+      this.killPidGroup(workerPid, "SIGKILL");
+    }
+  }
+
+  forceStop(): void {
+    this.failAll(new Error("task tool worker stopped"));
+    const child = this.child;
+    this.child = null;
+    const workerPid = child?.pid;
+    if (workerPid) {
+      this.expectedExitPids.add(workerPid);
+      this.stopWatchdog(workerPid);
+      this.killPidGroup(workerPid, "SIGKILL");
+    }
+  }
+}
+
+export async function withIsolatedToolWorker<T>(
+  body: (executeTool: CheckToolExecutor) => Promise<T>,
+): Promise<T> {
+  const worker = new IsolatedToolWorker();
+  const executeTool: CheckToolExecutor = (name, args, timeoutMs) => worker.call(name, args, timeoutMs);
+  try {
+    return await body(executeTool);
+  } finally {
+    worker.stop();
+  }
+}
+
+function evictOldestIdleRetainedWorker(exceptTaskId?: string): boolean {
+  const oldest = [...retainedTaskWorkers.entries()]
+    .filter(([taskId, retained]) => taskId !== exceptTaskId && retained.active === 0)
+    .sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
+  if (!oldest) return false;
+  oldest[1].worker.stop();
+  retainedTaskWorkers.delete(oldest[0]);
+  return true;
+}
+
+function trimRetainedWorkers(): void {
+  while (retainedTaskWorkers.size > MAX_RETAINED_TASK_WORKERS) {
+    if (!evictOldestIdleRetainedWorker()) break;
+  }
+}
+
+function retainedWorkerFor(taskId: string): RetainedTaskWorker {
+  const existing = retainedTaskWorkers.get(taskId);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing;
+  }
+  if (retainedTaskWorkers.size >= MAX_RETAINED_TASK_WORKERS) {
+    evictOldestIdleRetainedWorker(taskId);
+  }
+  const retained: RetainedTaskWorker = { worker: new IsolatedToolWorker(), lastUsed: Date.now(), active: 0 };
+  retainedTaskWorkers.set(taskId, retained);
+  return retained;
+}
+
+export function stopTaskToolWorker(taskId: string): void {
+  const retained = retainedTaskWorkers.get(taskId);
+  if (!retained) return;
+  retained.worker.stop();
+  retainedTaskWorkers.delete(taskId);
+}
+
+export async function withTaskToolExecutor<T>(
+  task: Task,
+  body: (executeTool: CheckToolExecutor) => Promise<T>,
+): Promise<T> {
+  const isolated = new IsolatedToolWorker();
+  let retained: RetainedTaskWorker | undefined;
+
+  const executeTool: CheckToolExecutor = async (name, args, timeoutMs) => {
+    if (!STATEFUL_TASK_TOOLS.has(name)) return await isolated.call(name, args, timeoutMs);
+
+    if (!retained) {
+      retained = retainedWorkerFor(task.id);
+      retained.active += 1;
+    }
+    try {
+      return await retained.worker.call(name, args, timeoutMs);
+    } catch (error) {
+      const failedRetained = retained;
+      if (failedRetained && retainedTaskWorkers.get(task.id) === failedRetained) {
+        failedRetained.worker.forceStop();
+        retainedTaskWorkers.delete(task.id);
+      }
+      retained = undefined;
+      throw error;
+    }
+  };
+
+  try {
+    return await body(executeTool);
+  } finally {
+    isolated.stop();
+    if (retained && retainedTaskWorkers.get(task.id) === retained) {
+      retained.active = Math.max(0, retained.active - 1);
+      retained.lastUsed = Date.now();
+    }
+    trimRetainedWorkers();
+  }
+}
+
+process.once("exit", () => {
+  // Timers do not run once Node is exiting, so use an immediate group kill here.
+  for (const { worker } of retainedTaskWorkers.values()) worker.forceStop();
+  retainedTaskWorkers.clear();
+});
 
 function lockFile(id: string): string {
   return path.join(tasksDir(), `${safeFileId(id, "task id")}.lock.json`);
@@ -157,63 +460,66 @@ export function isRunning(taskId: string): boolean {
   return processAlive(existing.pid);
 }
 
-async function executeStep(step: Step): Promise<{ ok: boolean; detail: string }> {
+async function executeStep(
+  step: Step,
+  executeTool: CheckToolExecutor,
+): Promise<{ ok: boolean; detail: string }> {
+  const limit = Math.max(5, step.timeoutSeconds) * 1000;
   if (step.tool === "shell") {
     const cmd = typeof step.args?.cmd === "string" ? step.args.cmd : "";
     if (!cmd) return { ok: false, detail: "a shell step needs args.cmd" };
     const cwd = typeof step.args?.cwd === "string" ? step.args.cwd : undefined;
-    const result = await sh(cmd, { cwd, timeoutMs: step.timeoutSeconds * 1000 });
+    const result = await sh(cmd, { cwd, timeoutMs: limit });
     const output = `${result.out}\n${result.err}`.trim();
     return result.ok
       ? { ok: true, detail: output ? truncate(output, 1500) : "exit 0" }
-      : { ok: false, detail: `exit ${result.code}: ${truncate(output, 1500)}` };
+      : {
+          ok: false,
+          detail: result.timedOut
+            ? `timed out after ${step.timeoutSeconds}s`
+            : `exit ${result.code}: ${truncate(output, 1500)}`,
+        };
   }
   if (step.tool === "sleep") {
     const seconds = Math.max(0, Math.min(600, Number(step.args?.seconds ?? 1)));
+    if (seconds * 1000 > limit) {
+      await new Promise((resolve) => setTimeout(resolve, limit));
+      return { ok: false, detail: `timed out after ${step.timeoutSeconds}s` };
+    }
     await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
     return { ok: true, detail: `waited ${seconds}s` };
   }
   if (!step.tool) return { ok: false, detail: "the step has no tool or shell command" };
-  const handler = handlerFor(step.tool);
-  if (!handler) {
+  if (!handlerFor(step.tool)) {
     return { ok: false, detail: `unknown tool ${step.tool}. Registered tools: see tools/list.` };
   }
-  const result = await handler(step.args ?? {});
-  return { ok: result.ok, detail: truncate(result.message, 1500) };
-}
-
-async function withTimeout(step: Step): Promise<{ ok: boolean; detail: string }> {
-  const limit = Math.max(5, step.timeoutSeconds) * 1000;
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<{ ok: boolean; detail: string }>((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false, detail: `timed out after ${step.timeoutSeconds}s` }), limit);
-  });
   try {
-    return await Promise.race([executeStep(step), timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
+    const result = await executeTool(step.tool, step.args ?? {}, limit);
+    return { ok: result.ok, detail: truncate(result.message, 1500) };
+  } catch (error) {
+    return { ok: false, detail: (error as Error).message };
   }
 }
 
-async function runStep(task: Task, step: Step): Promise<StepOutcome> {
+async function runStep(task: Task, step: Step, executeTool: CheckToolExecutor): Promise<StepOutcome> {
   step.status = "running";
   step.startedAt = new Date().toISOString();
   step.attempts += 1;
   saveTask(task);
   appendLog(task.id, { event: "step_start", step: step.id, tool: step.tool, args: step.args });
 
-  let execution = await withTimeout(step);
-  let check: CheckResult | null = execution.ok && step.verify ? await runCheck(step.verify, 2) : null;
+  let execution = await executeStep(step, executeTool);
+  let check: CheckResult | null = execution.ok && step.verify ? await runCheck(step.verify, 2, executeTool) : null;
   let replays = 0;
 
   while (replays < step.retries && (!execution.ok || (check !== null && !check.ok))) {
     replays += 1;
     if (step.replay) {
-      execution = await withTimeout(step);
-      check = execution.ok && step.verify ? await runCheck(step.verify, 2) : null;
+      execution = await executeStep(step, executeTool);
+      check = execution.ok && step.verify ? await runCheck(step.verify, 2, executeTool) : null;
     } else if (check !== null && !check.ok) {
       // Re-running is not always safe, so by default only the check is retried.
-      check = await runCheck(step.verify as NonNullable<Step["verify"]>, 3);
+      check = await runCheck(step.verify as NonNullable<Step["verify"]>, 3, executeTool);
     } else {
       break;
     }
@@ -273,52 +579,55 @@ export async function runTask(id: string, options: RunOptions = {}): Promise<Run
   heartbeatTimer.unref();
 
   try {
-    for (;;) {
-      if (outcomes.length >= maxSteps) {
-        stopped = "budget";
-        break;
+    return await withTaskToolExecutor(task, async (executeTool) => {
+      for (;;) {
+        if (outcomes.length >= maxSteps) {
+          stopped = "budget";
+          break;
+        }
+        if (Date.now() - started > task.budget.maxMinutes * 60_000) {
+          stopped = "time";
+          break;
+        }
+        const pending = stepsNeedApproval(task);
+        if (pending.length && runnableSteps(task).length === 0) {
+          stopped = "approval";
+          break;
+        }
+        const next = runnableSteps(task)[0];
+        if (!next) {
+          stopped = outcomes.length ? "complete" : "nothing-runnable";
+          break;
+        }
+        if (options.dryRun) {
+          outcomes.push({ step: next, executed: false, verified: false, detail: "dry run, nothing executed" });
+          stopped = "budget";
+          break;
+        }
+        const outcome = await runStep(task, next, executeTool);
+        outcomes.push(outcome);
+        heartbeat(task);
+        if (outcome.step.status === "failed") {
+          stopped = "failure";
+          if (options.stopOnFailure !== false) break;
+        }
       }
-      if (Date.now() - started > task.budget.maxMinutes * 60_000) {
-        stopped = "time";
-        break;
-      }
-      const pending = stepsNeedApproval(task);
-      if (pending.length && runnableSteps(task).length === 0) {
-        stopped = "approval";
-        break;
-      }
-      const next = runnableSteps(task)[0];
-      if (!next) {
-        stopped = outcomes.length ? "complete" : "nothing-runnable";
-        break;
-      }
-      if (options.dryRun) {
-        outcomes.push({ step: next, executed: false, verified: false, detail: "dry run, nothing executed" });
-        stopped = "budget";
-        break;
-      }
-      const outcome = await runStep(task, next);
-      outcomes.push(outcome);
-      heartbeat(task);
-      if (outcome.step.status === "failed") {
-        stopped = "failure";
-        if (options.stopOnFailure !== false) break;
-      }
-    }
+
+      if (outcomes.some((outcome) => outcome.step.status === "failed")) stopped = "failure";
+      const summary = summarizeRun(task, outcomes, stopped);
+      return {
+        task,
+        outcomes,
+        stopped,
+        message: stale.length
+          ? `Re-queued ${stale.join(", ")}: the definition changed after those steps were verified.\n${summary}`
+          : summary,
+      };
+    });
   } finally {
     clearInterval(heartbeatTimer);
     releaseLock(task);
   }
-
-  const summary = summarizeRun(task, outcomes, stopped);
-  return {
-    task,
-    outcomes,
-    stopped,
-    message: stale.length
-      ? `Re-queued ${stale.join(", ")}: the definition changed after those steps were verified.\n${summary}`
-      : summary,
-  };
 }
 
 function summarizeRun(task: Task, outcomes: StepOutcome[], stopped: StopReason): string {
@@ -327,7 +636,7 @@ function summarizeRun(task: Task, outcomes: StepOutcome[], stopped: StopReason):
   const headline: Record<StopReason, string> = {
     complete: "Every runnable step finished.",
     budget: "Step budget for this call is used up. Run again to continue.",
-    failure: "Stopped on a failed step.",
+    failure: "One or more steps failed during this run.",
     approval: "Paused: a step needs approval before it can run.",
     "nothing-runnable": "Nothing can run: dependencies, approvals or failures are in the way.",
     time: "Stopped at the task's time budget.",

@@ -24,6 +24,12 @@ const directFile = path.join(home, "direct-write.txt");
 const forbiddenCheckFile = path.join(home, "forbidden-check.txt");
 const exclusiveWriteFile = path.join(home, "exclusive-write.txt");
 const lockRaceFile = path.join(home, "lock-race.txt");
+const hardTimeoutFile = path.join(home, "hard-timeout-leak.txt");
+const innerTimeoutFile = path.join(home, "inner-timeout-leak.txt");
+const verifyTimeoutFile = path.join(home, "verify-timeout-leak.txt");
+const mixedStateTimeoutFile = path.join(home, "mixed-state-timeout-leak.txt");
+const mixedStateSurvivedFile = path.join(home, "mixed-state-survived.txt");
+const closeRaceFile = path.join(home, "close-race.txt");
 
 
 let pass = 0;
@@ -151,6 +157,170 @@ check(
     lockLines.length === 1,
   `${lockLines.length} side effect(s)`,
 );
+
+const statefulPlan = await call(second, "task_plan", {
+  title: "stateful task tools survive a task_run boundary",
+  steps: [
+    { text: "start a persistent shell", tool: "shell_session", args: { action: "start", cwd: project } },
+    { text: "use the same persistent shell", tool: "shell_session", args: { action: "run", command: "printf STATEFUL_OK" } },
+  ],
+});
+const statefulId = /task_[a-f0-9]+/.exec(statefulPlan.text)?.[0] ?? "";
+await call(second, "task_approve", { id: statefulId, all: true });
+const statefulFirst = await call(second, "task_run", { id: statefulId, maxSteps: 1 });
+const statefulSecond = await call(second, "task_run", { id: statefulId, maxSteps: 1 });
+check(
+  "stateful tool process survives separate task_run calls",
+  statefulFirst.ok && statefulSecond.ok && /STATEFUL_OK/.test(statefulSecond.text),
+  statefulSecond.text.split("\n")[0] ?? "",
+);
+await call(second, "task_close", { id: statefulId, force: true });
+
+const hardTimeoutPlan = await call(second, "task_plan", {
+  title: "hard tool deadline kills the worker tree",
+  steps: [{
+    text: "run a command that tries to outlive the task deadline",
+    tool: "run_command",
+    args: {
+      command: `trap '' TERM; sleep 6; printf leaked > '${hardTimeoutFile}'`,
+      timeoutSeconds: 30,
+    },
+    timeoutSeconds: 5,
+  }],
+});
+const hardTimeoutId = /task_[a-f0-9]+/.exec(hardTimeoutPlan.text)?.[0] ?? "";
+await call(second, "task_approve", { id: hardTimeoutId, all: true });
+const hardStarted = Date.now();
+const hardTimeoutRun = await call(second, "task_run", { id: hardTimeoutId, maxSteps: 1 });
+const hardElapsed = Date.now() - hardStarted;
+check(
+  "registered tool deadline is enforced by worker termination",
+  !hardTimeoutRun.ok && /hard task deadline after 5s/.test(hardTimeoutRun.text) && hardElapsed >= 4_500 && hardElapsed < 8_000,
+  `${hardElapsed}ms`,
+);
+await new Promise((resolve) => setTimeout(resolve, 2_000));
+check(
+  "timed-out worker descendants cannot finish later",
+  !fs.existsSync(hardTimeoutFile),
+  fs.existsSync(hardTimeoutFile) ? "late side effect escaped cancellation" : "no late side effect",
+);
+
+const innerTimeoutPlan = await call(second, "task_plan", {
+  title: "inner command timeout also kills the worker tree",
+  steps: [{
+    text: "let the tool's own timeout fire before the task deadline",
+    tool: "run_command",
+    args: {
+      command: `trap '' TERM; sleep 2; printf leaked > '${innerTimeoutFile}'`,
+      timeoutSeconds: 1,
+    },
+    // Keep the outer hard deadline well beyond the tool's own timeout so this
+    // regression specifically proves the inner timeout tears the worker down.
+    timeoutSeconds: 10,
+  }],
+});
+const innerTimeoutId = /task_[a-f0-9]+/.exec(innerTimeoutPlan.text)?.[0] ?? "";
+await call(second, "task_approve", { id: innerTimeoutId, all: true });
+const innerStarted = Date.now();
+const innerTimeoutRun = await call(second, "task_run", { id: innerTimeoutId, maxSteps: 1 });
+const innerElapsed = Date.now() - innerStarted;
+check(
+  "an inner subprocess timeout tears down the isolated worker group",
+  !innerTimeoutRun.ok &&
+    /(worker exited unexpectedly|hard task deadline)/.test(innerTimeoutRun.text) &&
+    innerElapsed >= 700 && innerElapsed < 12_000,
+  `${innerElapsed}ms`,
+);
+await new Promise((resolve) => setTimeout(resolve, 2_000));
+check(
+  "inner timeout leaves no surviving descendant",
+  !fs.existsSync(innerTimeoutFile),
+  fs.existsSync(innerTimeoutFile) ? "late side effect escaped inner timeout" : "no late side effect",
+);
+
+const verifyTimeoutPlan = await call(second, "task_plan", {
+  title: "verification deadline kills its process tree",
+  steps: [{
+    text: "finish immediately, then run a verification that would leak later",
+    tool: "shell",
+    args: { cmd: "true" },
+    verify: { kind: "shell", cmd: `sleep 5; printf leaked > '${verifyTimeoutFile}'` },
+    timeoutSeconds: 5,
+  }],
+});
+const verifyTimeoutId = /task_[a-f0-9]+/.exec(verifyTimeoutPlan.text)?.[0] ?? "";
+const verifyStarted = Date.now();
+const verifyTimeoutRun = await call(second, "task_run", { id: verifyTimeoutId, maxSteps: 1 });
+const verifyElapsed = Date.now() - verifyStarted;
+check(
+  "verification obeys its short polling deadline instead of a fixed 120s",
+  !verifyTimeoutRun.ok && verifyElapsed >= 1_700 && verifyElapsed < 5_000,
+  `${verifyElapsed}ms`,
+);
+await new Promise((resolve) => setTimeout(resolve, 3_500));
+check(
+  "timed-out verification descendants cannot finish later",
+  !fs.existsSync(verifyTimeoutFile),
+  fs.existsSync(verifyTimeoutFile) ? "late verification side effect escaped cancellation" : "no late side effect",
+);
+
+const mixedStatePlan = await call(second, "task_plan", {
+  title: "stateful worker is isolated from ordinary tool failure",
+  steps: [
+    { text: "start retained shell", tool: "shell_session", args: { action: "start", cwd: project } },
+    {
+      text: "timeout an unrelated ordinary tool",
+      tool: "run_command",
+      args: { command: `sleep 2; printf leaked > '${mixedStateTimeoutFile}'`, timeoutSeconds: 1 },
+      timeoutSeconds: 5,
+      dependsOn: ["s1"],
+    },
+    {
+      text: "prove the retained shell survived",
+      tool: "shell_session",
+      args: { action: "run", command: `printf RETAINED_STATE_OK > '${mixedStateSurvivedFile}'` },
+      verify: { kind: "file", path: mixedStateSurvivedFile },
+      dependsOn: ["s1"],
+    },
+  ],
+});
+const mixedStateId = /task_[a-f0-9]+/.exec(mixedStatePlan.text)?.[0] ?? "";
+await call(second, "task_approve", { id: mixedStateId, all: true });
+await call(second, "task_run", { id: mixedStateId, maxSteps: 1 });
+const mixedStateRun = await call(second, "task_run", { id: mixedStateId, maxSteps: 2, stopOnFailure: false });
+check(
+  "ordinary tool timeout cannot destroy a retained stateful worker",
+  !mixedStateRun.ok &&
+    fs.existsSync(mixedStateSurvivedFile) &&
+    fs.readFileSync(mixedStateSurvivedFile, "utf8") === "RETAINED_STATE_OK" &&
+    !fs.existsSync(mixedStateTimeoutFile) &&
+    /s3 done/.test(mixedStateRun.text),
+  mixedStateRun.text.split("\n").slice(0, 6).join(" | "),
+);
+await call(second, "task_close", { id: mixedStateId, force: true });
+
+const closeRacePlan = await call(second, "task_plan", {
+  title: "task_close cannot race a running task",
+  steps: [{
+    text: "stay active long enough to attempt a concurrent close",
+    tool: "shell",
+    args: { cmd: `sleep 2; printf done > '${closeRaceFile}'` },
+    verify: { kind: "file", path: closeRaceFile },
+    timeoutSeconds: 5,
+  }],
+});
+const closeRaceId = /task_[a-f0-9]+/.exec(closeRacePlan.text)?.[0] ?? "";
+const activeRun = call(second, "task_run", { id: closeRaceId, maxSteps: 1 });
+await new Promise((resolve) => setTimeout(resolve, 250));
+const closeWhileRunning = await call(second, "task_close", { id: closeRaceId, force: true });
+check(
+  "task_close refuses to race an active task_run",
+  !closeWhileRunning.ok && /while task_run is still active/.test(closeWhileRunning.text),
+  closeWhileRunning.text.split("\n")[0] ?? "",
+);
+const closeRaceRun = await activeRun;
+check("the active run survives the rejected close", closeRaceRun.ok && fs.existsSync(closeRaceFile));
+await call(second, "task_close", { id: closeRaceId });
 
 // State identifiers must never become path traversal primitives.
 const outsideTask = path.join(home, "outside.json");

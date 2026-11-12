@@ -33,7 +33,10 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
     const out = new BoundedCapture(maxBytes);
     const err = new BoundedCapture(maxBytes);
 
-    const grouped = process.platform !== "win32";
+    const taskWorkerPid = Number(process.env.CHAT_UNLEASHED_TASK_WORKER_PID);
+    const inTaskWorkerTree =
+      process.env.CHAT_UNLEASHED_TASK_WORKER === "1" && Number.isInteger(taskWorkerPid) && taskWorkerPid > 1;
+    const grouped = process.platform !== "win32" && !inTaskWorkerTree;
     const child = spawn(cmd, args, {
       cwd,
       env: env ?? process.env,
@@ -45,6 +48,10 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
 
     const timer = setTimeout(() => {
       timedOut = true;
+      if (inTaskWorkerTree && process.platform !== "win32") {
+        try { process.kill(-taskWorkerPid, "SIGKILL"); } catch { /* already gone */ }
+        return;
+      }
       try {
         if (grouped && child.pid) process.kill(-child.pid, "SIGKILL");
         else child.kill("SIGKILL");
