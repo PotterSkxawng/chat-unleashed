@@ -7,12 +7,27 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
+const SAFE_FILE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function isSafeFileId(value: string): boolean {
+  return SAFE_FILE_ID.test(value) && value !== "." && value !== "..";
+}
+
+export function safeFileId(value: string, label = "id"): string {
+  if (!isSafeFileId(value)) {
+    throw new Error(`${label} must be a filename-safe identifier (letters, numbers, dot, underscore or hyphen)`);
+  }
+  return value;
+}
+
 export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
-export function readJson<T>(file: string): T | null {
+export function readJson<T>(file: string, maxBytes = 16 * 1024 * 1024): T | null {
   try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > maxBytes) return null;
     return JSON.parse(fs.readFileSync(file, "utf8")) as T;
   } catch {
     return null;

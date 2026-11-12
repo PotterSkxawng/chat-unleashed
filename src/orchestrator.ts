@@ -5,12 +5,13 @@
 // or a budget runs out. The distinction that matters: a step that executed is
 // not a step that passed. Without a check a step ends "unverified", and a task
 // cannot close as done while any acceptance criterion lacks evidence.
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runCheck, type CheckResult } from "./checks.js";
 import { sh, truncate } from "./exec.js";
 import { handlerFor } from "./registry.js";
-import { readJson, removeFile, writeJsonAtomic } from "./store.js";
+import { readJson, removeFile, safeFileId, writeJsonAtomic } from "./store.js";
 import {
   appendLog,
   fingerprintOf,
@@ -56,8 +57,10 @@ interface LockFile {
   task: string;
 }
 
+const activeLocks = new Set<string>();
+
 function lockFile(id: string): string {
-  return path.join(tasksDir(), `${id}.lock.json`);
+  return path.join(tasksDir(), `${safeFileId(id, "task id")}.lock.json`);
 }
 
 function processAlive(pid: number): boolean {
@@ -69,20 +72,65 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** One writer per task. A lock from another live process blocks the run; a lock
- *  left behind by a process that no longer exists is taken over. */
+function createLockFile(file: string, value: LockFile): boolean {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  return true;
+}
+
+/** One writer per task. Lock creation is exclusive, so two clients racing to
+ * start the same task cannot both become the owner. A live local pid always
+ * wins; heartbeat age is only used for locks from another host or a corrupt
+ * lock left behind by a crashed writer. */
 function acquireLock(task: Task): { ok: true } | { ok: false; reason: string } {
   const file = lockFile(task.id);
   const existing = readJson<LockFile>(file);
-  if (existing && existing.pid !== process.pid && existing.host === os.hostname() && processAlive(existing.pid)) {
-    const fresh = Date.now() - Date.parse(existing.heartbeat || existing.startedAt) < 120_000;
-    if (fresh) {
+  if (existing) {
+    const sameHost = existing.host === os.hostname();
+    if (sameHost && existing.pid === process.pid && activeLocks.has(task.id)) {
+      return { ok: false, reason: `already running in this server process since ${existing.startedAt}` };
+    }
+    if (existing.pid !== process.pid && sameHost && processAlive(existing.pid)) {
       return { ok: false, reason: `already running in pid ${existing.pid} since ${existing.startedAt}` };
     }
+    const heartbeat = Date.parse(existing.heartbeat || existing.startedAt);
+    if (!sameHost && Number.isFinite(heartbeat) && Date.now() - heartbeat < 120_000) {
+      return { ok: false, reason: `already running on ${existing.host} since ${existing.startedAt}` };
+    }
+    removeFile(file);
+  } else if (fs.existsSync(file)) {
+    // A just-created exclusive lock may be between open() and its first write.
+    // Never delete that window; only clean an unreadable lock after it is old.
+    const age = Date.now() - fs.statSync(file).mtimeMs;
+    if (age < 120_000) return { ok: false, reason: "lock exists and is still being initialized" };
+    removeFile(file);
   }
+
   const stamp = new Date().toISOString();
-  writeJsonAtomic(file, { pid: process.pid, host: os.hostname(), startedAt: stamp, heartbeat: stamp, task: task.id });
-  return { ok: true };
+  const mine: LockFile = { pid: process.pid, host: os.hostname(), startedAt: stamp, heartbeat: stamp, task: task.id };
+  if (createLockFile(file, mine)) {
+    activeLocks.add(task.id);
+    return { ok: true };
+  }
+
+  const raced = readJson<LockFile>(file);
+  return {
+    ok: false,
+    reason: raced?.pid
+      ? `another runner acquired the lock first (pid ${raced.pid})`
+      : "another runner acquired the lock first",
+  };
 }
 
 function heartbeat(task: Task): void {
@@ -93,6 +141,7 @@ function heartbeat(task: Task): void {
 }
 
 function releaseLock(task: Task): void {
+  activeLocks.delete(task.id);
   const existing = readJson<LockFile>(lockFile(task.id));
   if (!existing || existing.pid === process.pid) removeFile(lockFile(task.id));
 }
@@ -100,8 +149,12 @@ function releaseLock(task: Task): void {
 export function isRunning(taskId: string): boolean {
   const existing = readJson<LockFile>(lockFile(taskId));
   if (!existing) return false;
-  if (existing.host !== os.hostname()) return false;
-  return processAlive(existing.pid) && Date.now() - Date.parse(existing.heartbeat || existing.startedAt) < 120_000;
+  if (existing.host !== os.hostname()) {
+    const heartbeat = Date.parse(existing.heartbeat || existing.startedAt);
+    return Number.isFinite(heartbeat) && Date.now() - heartbeat < 120_000;
+  }
+  if (existing.pid === process.pid) return activeLocks.has(taskId);
+  return processAlive(existing.pid);
 }
 
 async function executeStep(step: Step): Promise<{ ok: boolean; detail: string }> {
@@ -210,6 +263,14 @@ export async function runTask(id: string, options: RunOptions = {}): Promise<Run
   const started = Date.now();
   const maxSteps = Math.max(1, Math.min(50, options.maxSteps ?? 5));
   let stopped: StopReason = "complete";
+  const heartbeatTimer = setInterval(() => {
+    try {
+      heartbeat(task);
+    } catch {
+      // Losing a heartbeat must not interrupt the action currently running.
+    }
+  }, 30_000);
+  heartbeatTimer.unref();
 
   try {
     for (;;) {
@@ -245,6 +306,7 @@ export async function runTask(id: string, options: RunOptions = {}): Promise<Run
       }
     }
   } finally {
+    clearInterval(heartbeatTimer);
     releaseLock(task);
   }
 

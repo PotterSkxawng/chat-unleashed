@@ -9,7 +9,8 @@ import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { appHome } from "./config.js";
 import { describeCheck, runCheck, type CheckSpec } from "./checks.js";
-import { appendJsonl, listJson, readJson, readJsonl, writeJsonAtomic, ensureDir } from "./store.js";
+import { toolMayBeDestructive } from "./registry.js";
+import { appendJsonl, listJson, readJson, readJsonl, writeJsonAtomic, ensureDir, isSafeFileId, safeFileId } from "./store.js";
 
 export type StepStatus = "pending" | "running" | "done" | "unverified" | "failed" | "skipped" | "blocked";
 export type TaskStatus = "active" | "paused" | "blocked" | "done" | "failed";
@@ -117,11 +118,11 @@ export function tasksDir(): string {
 }
 
 export function taskFile(id: string): string {
-  return path.join(tasksDir(), `${id}.json`);
+  return path.join(tasksDir(), `${safeFileId(id, "task id")}.json`);
 }
 
 export function taskLogFile(id: string): string {
-  return path.join(tasksDir(), `${id}.jsonl`);
+  return path.join(tasksDir(), `${safeFileId(id, "task id")}.jsonl`);
 }
 
 function openTasksDir(): string {
@@ -129,7 +130,7 @@ function openTasksDir(): string {
 }
 
 function openTaskMarker(id: string): string {
-  return path.join(openTasksDir(), `${id}.json`);
+  return path.join(openTasksDir(), `${safeFileId(id, "task id")}.json`);
 }
 
 function openMigrationMarker(): string {
@@ -193,7 +194,7 @@ function ensureTaskIndexesMigrated(): void {
   const tasks = listJson(tasksDir())
     .filter((file) => !file.endsWith(".lock.json"))
     .map((file) => readJson<Task>(file))
-    .filter((task): task is Task => Boolean(task && task.id))
+    .filter((task): task is Task => Boolean(task && task.id && isSafeFileId(task.id)))
     .sort((a, b) => a.updated.localeCompare(b.updated));
   const activityLines: string[] = [];
   for (const task of tasks) {
@@ -220,6 +221,7 @@ function stepId(index: number): string {
 }
 
 export function isDestructive(step: Pick<Step, "tool" | "args" | "text">): boolean {
+  if (step.tool && toolMayBeDestructive(step.tool, step.args ?? {})) return true;
   const haystack = `${step.tool ?? ""} ${JSON.stringify(step.args ?? {})} ${step.text}`;
   return DESTRUCTIVE.some((pattern) => pattern.test(haystack));
 }
@@ -311,7 +313,7 @@ export function listTasks(includeClosed = false, limit = 100): Task[] {
     const tasks: Task[] = [];
     for (let i = recent.length - 1; i >= 0 && tasks.length < wanted; i--) {
       const entry = recent[i];
-      if (!entry?.id || seen.has(entry.id)) continue;
+      if (!entry?.id || !isSafeFileId(entry.id) || seen.has(entry.id)) continue;
       seen.add(entry.id);
       const task = loadTask(entry.id);
       if (!task || !isOpenStatus(task.status)) continue;
@@ -327,7 +329,7 @@ export function listTasks(includeClosed = false, limit = 100): Task[] {
       .filter((entry): entry is TaskActivity => Boolean(entry?.id))
       .sort((a, b) => b.updated.localeCompare(a.updated));
     for (const marker of markers) {
-      if (tasks.length >= wanted || seen.has(marker.id)) continue;
+      if (tasks.length >= wanted || !isSafeFileId(marker.id) || seen.has(marker.id)) continue;
       seen.add(marker.id);
       const task = loadTask(marker.id);
       if (!task || !isOpenStatus(task.status)) continue;
@@ -343,7 +345,7 @@ export function listTasks(includeClosed = false, limit = 100): Task[] {
   const tasks: Task[] = [];
   for (let i = activity.length - 1; i >= 0 && tasks.length < wanted; i--) {
     const entry = activity[i];
-    if (!entry?.id || seen.has(entry.id)) continue;
+    if (!entry?.id || !isSafeFileId(entry.id) || seen.has(entry.id)) continue;
     seen.add(entry.id);
     const task = loadTask(entry.id);
     if (task) tasks.push(task);
@@ -394,13 +396,12 @@ export function dependenciesMet(task: Task, step: Step): boolean {
 /** Why a step cannot start right now, or null when it can. */
 export function blockReason(task: Task, step: Step): string | null {
   if (step.status === "done" || step.status === "skipped") return "already finished";
+  if (step.status === "unverified") return "already executed without verification; add a check or re-queue it explicitly";
   const missing = step.dependsOn.filter((id) => {
     const dep = stepById(task, id);
     return !dep || (dep.status !== "done" && dep.status !== "unverified" && dep.status !== "skipped");
   });
   if (missing.length) return `waiting on ${missing.join(", ")}`;
-  const failed = task.steps.find((other) => other.status === "failed" && other.dependsOn.includes(step.id));
-  if (failed) return `${failed.id} failed and depends on this step`;
   if (needsApproval(step) && !step.approved) return "needs approval before it can run";
   return null;
 }

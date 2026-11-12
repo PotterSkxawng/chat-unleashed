@@ -15,13 +15,20 @@ export interface ToolOutcome {
 export type ToolHandler = (args: Record<string, unknown>) => Promise<ToolOutcome>;
 export type ToolCallListener = (name: string, args: Record<string, unknown>) => void;
 
+export interface ToolMetadata {
+  readOnly?: boolean;
+  destructive?: boolean;
+}
+
 const handlers = new Map<string, ToolHandler>();
 const listeners = new Set<ToolCallListener>();
 const descriptions = new Map<string, string>();
+const metadata = new Map<string, ToolMetadata>();
 
-export function registerHandler(name: string, handler: ToolHandler, description = ""): void {
+export function registerHandler(name: string, handler: ToolHandler, description = "", meta: ToolMetadata = {}): void {
   handlers.set(name, handler);
   if (description) descriptions.set(name, description);
+  metadata.set(name, { ...meta });
 }
 
 export function handlerFor(name: string): ToolHandler | undefined {
@@ -30,6 +37,28 @@ export function handlerFor(name: string): ToolHandler | undefined {
 
 export function describeTool(name: string): string {
   return descriptions.get(name) ?? "";
+}
+
+const VERIFICATION_SAFE_ACTIONS: Record<string, ReadonlySet<string>> = {
+  code_index: new Set(["summary"]),
+  code_loop: new Set(["history", "resources", "profile", "crashes"]),
+  bench: new Set(["compare", "list"]),
+};
+
+const NON_DESTRUCTIVE_ACTIONS: Record<string, ReadonlySet<string>> = {
+  code_loop: new Set(["history", "resources", "profile", "crashes"]),
+};
+
+export function toolCanVerify(name: string, args: Record<string, unknown> = {}): boolean {
+  if (metadata.get(name)?.readOnly === true) return true;
+  const action = typeof args.action === "string" ? args.action : "";
+  return VERIFICATION_SAFE_ACTIONS[name]?.has(action) === true;
+}
+
+export function toolMayBeDestructive(name: string, args: Record<string, unknown> = {}): boolean {
+  if (metadata.get(name)?.destructive !== true) return false;
+  const action = typeof args.action === "string" ? args.action : "";
+  return NON_DESTRUCTIVE_ACTIONS[name]?.has(action) !== true;
 }
 
 export function toolNames(): string[] {

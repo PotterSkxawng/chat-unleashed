@@ -202,6 +202,10 @@ function parseArgs(argv: string[]): Cli {
     process.stderr.write(`invalid --port\n`);
     process.exit(2);
   }
+  if (!["127.0.0.1", "localhost", "::1"].includes(cli.host)) {
+    process.stderr.write(`invalid --host: Chat Unleashed's unauthenticated HTTP MCP listener must stay on loopback\n`);
+    process.exit(2);
+  }
   return cli;
 }
 
@@ -237,8 +241,9 @@ async function main(): Promise<void> {
   if (extraHosts.length) {
     process.stderr.write(`[http] extra allowed Host values from MCP_ALLOWED_HOSTS: ${extraHosts.join(", ")}\n`);
   }
+  const headerHost = cli.host === "::1" ? "[::1]" : cli.host;
   const allowedHosts = [
-    `${cli.host}:${cli.port}`,
+    `${headerHost}:${cli.port}`,
     `127.0.0.1:${cli.port}`,
     `localhost:${cli.port}`,
     `[::1]:${cli.port}`,
@@ -384,7 +389,7 @@ async function main(): Promise<void> {
       // The SDK matches the Host header and Origin verbatim, including the port.
       allowedHosts,
       allowedOrigins: [
-        `http://${cli.host}:${cli.port}`,
+        `http://${headerHost}:${cli.port}`,
         `http://127.0.0.1:${cli.port}`,
         `http://localhost:${cli.port}`,
         `http://[::1]:${cli.port}`,
@@ -427,10 +432,11 @@ async function main(): Promise<void> {
     httpServer.listen(cli.port, cli.host, resolve);
   });
 
-  audit({ event: "server_start", summary: `transport=http url=http://${cli.host}:${cli.port}/` });
+  const displayHost = cli.host === "::1" ? "[::1]" : cli.host;
+  audit({ event: "server_start", summary: `transport=http url=http://${displayHost}:${cli.port}/` });
   process.stdout.write(
-    `Chat Unleashed listening on http://${cli.host}:${cli.port}/ (Streamable HTTP MCP)\n` +
-      `health: http://${cli.host}:${cli.port}/health\n`,
+    `Chat Unleashed listening on http://${displayHost}:${cli.port}/ (Streamable HTTP MCP)\n` +
+      `health: http://${displayHost}:${cli.port}/health\n`,
   );
   const stop = (signal: "SIGINT" | "SIGTERM") => {
     audit({ event: "server_stop", summary: `signal=${signal}` });

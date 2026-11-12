@@ -9,6 +9,8 @@
 //   npx esbuild src/targeting.ts src/web.ts src/coding.ts src/skills.ts --bundle --platform=node --format=esm --outdir=.test
 import fs from "node:fs";
 import path from "node:path";
+import net from "node:net";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +23,7 @@ const coding = await load("coding");
 const skills = await load("skills");
 const audit = await load("audit");
 const config = await load("config");
+const ws = await load("ws");
 
 let pass = 0;
 let fail = 0;
@@ -129,6 +132,59 @@ check("role locator keeps its value", (() => { const loc = web.parseLocator("rol
 check("xpath locator survives", web.parseLocator("xpath=//button[1]").kind === "xpath");
 check("a dotted class is treated as css", web.parseLocator(".toolbar-item").kind === "css");
 
+async function localSocketServer(onRequest) {
+  const server = net.createServer((socket) => {
+    let request = "";
+    socket.on("data", (chunk) => {
+      request += chunk.toString("latin1");
+      if (request.includes("\r\n\r\n")) onRequest(socket, request);
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { server, port: server.address().port };
+}
+
+const missingAcceptServer = await localSocketServer((socket) => {
+  socket.end("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+});
+const missingAcceptRejected = await ws.MiniSocket.connect(`ws://127.0.0.1:${missingAcceptServer.port}/devtools`).then(
+  (socket) => { socket.close(); return false; },
+  () => true,
+);
+missingAcceptServer.server.close();
+check("websocket handshake requires Sec-WebSocket-Accept", missingAcceptRejected);
+
+const hugeHandshakeServer = await localSocketServer((socket) => {
+  socket.write("HTTP/1.1 101 Switching Protocols\r\nX-Fill: " + "a".repeat(70 * 1024));
+});
+const hugeHandshakeRejected = await ws.MiniSocket.connect(`ws://127.0.0.1:${hugeHandshakeServer.port}/devtools`).then(
+  (socket) => { socket.close(); return false; },
+  () => true,
+);
+hugeHandshakeServer.server.close();
+check("websocket handshake memory is bounded", hugeHandshakeRejected);
+
+const oversizedFrameServer = await localSocketServer((socket, request) => {
+  const key = /Sec-WebSocket-Key:\s*(\S+)/i.exec(request)?.[1] ?? "";
+  const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  setTimeout(() => {
+    const header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(64 * 1024 * 1024 + 1), 2);
+    socket.write(header);
+  }, 30);
+});
+const oversizedSocket = await ws.MiniSocket.connect(`ws://127.0.0.1:${oversizedFrameServer.port}/devtools`);
+const oversizedError = await new Promise((resolve) => {
+  const timer = setTimeout(() => resolve(""), 1000);
+  oversizedSocket.onError((error) => { clearTimeout(timer); resolve(error.message); });
+});
+oversizedSocket.close();
+oversizedFrameServer.server.close();
+check("websocket frames have a hard size cap", /frame exceeds/.test(String(oversizedError)), String(oversizedError));
+
 const tsSymbols = coding.parseSymbols(
   ["export function runTask(id: string) {", "class Task {", "  private helper() {", "export interface Step {", "type Kind = 'a' | 'b';", "const LIMIT = 5;"].join("\n"),
   "typescript",
@@ -187,6 +243,12 @@ check("a request with no overlap returns nothing", skills.matchSkills("book a fl
 
 const compiled = skills.compileSkill(veteran, {});
 check("a compiled skill keeps its acceptance criteria", compiled.title === veteran.name && compiled.steps === veteran.steps);
+check("skill ids reject path traversal", (() => {
+  try { skills.normalizeSkill({ id: "../escape", name: "unsafe" }); return false; } catch { return true; }
+})());
+check("goal ids reject path traversal", (() => {
+  try { coding.goalHistory("../escape"); return false; } catch { return true; }
+})());
 
 const dir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "lap-logic-"));
 fs.writeFileSync(path.join(dir, "a.ts"), "export function alpha() {}\nexport class Beta {}\n");
@@ -194,10 +256,13 @@ const index = await coding.indexRepo({ root: dir });
 check("indexing a folder records symbols", index.symbols === 2 && index.files >= 1, `${index.files} files, ${index.symbols} symbols`);
 const found = await coding.findSymbols({ root: dir, query: "beta" });
 check("symbol search is case insensitive", found.hits.length === 1 && found.hits[0].name === "Beta");
+fs.writeFileSync(path.join(dir, "todo.ts"), "// TODO: first\n// FIXME: second\nexport const done = true;\n");
+const summary = await coding.projectSummary(dir);
+check("project summary counts real TODO/FIXME markers", summary.todos === 2, `count ${summary.todos}`);
 fs.rmSync(dir, { recursive: true, force: true });
 
 console.log(`\n${pass} passed, ${fail} failed`);
-for (const module of ["targeting", "web", "coding", "skills", "audit", "config"]) {
+for (const module of ["targeting", "web", "coding", "skills", "audit", "config", "ws"]) {
   fs.rmSync(path.join(root, ".test", `${module}.js`), { force: true });
 }
 try { fs.rmdirSync(path.join(root, ".test")); } catch {}

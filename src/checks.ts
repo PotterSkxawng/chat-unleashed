@@ -9,7 +9,7 @@ import { resolveUserPath } from "./config.js";
 import { uiNodes, windowList } from "./computer.js";
 import { run, sh, truncate } from "./exec.js";
 import { qaPdf } from "./docqa.js";
-import { handlerFor } from "./registry.js";
+import { handlerFor, toolCanVerify } from "./registry.js";
 
 export type CheckKind = "shell" | "file" | "absent" | "windowTitle" | "uiText" | "tool" | "wait" | "pdf";
 
@@ -112,6 +112,9 @@ async function checkOnce(spec: CheckSpec): Promise<{ ok: boolean; detail: string
     }
     case "tool": {
       if (!spec.tool) return { ok: false, detail: "tool check needs tool" };
+      if (!toolCanVerify(spec.tool, spec.args ?? {})) {
+        return { ok: false, detail: `tool check refuses action that is not verification-safe: ${spec.tool}` };
+      }
       const handler = handlerFor(spec.tool);
       if (!handler) return { ok: false, detail: `unknown tool ${spec.tool}` };
       const result = await handler(spec.args ?? {});

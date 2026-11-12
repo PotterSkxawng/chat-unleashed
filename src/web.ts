@@ -944,7 +944,7 @@ export async function runWeb(args: WebActionArgs): Promise<Outcome> {
       case "close": {
         if (!args.tab) return failed("close needs tab (an id from action=tabs).");
         const handle = await ensureBrowser(args.port);
-        const res = await fetch(`http://127.0.0.1:${handle.port}/json/close/${args.tab}`);
+        const res = await fetch(`http://127.0.0.1:${handle.port}/json/close/${args.tab}`, { signal: AbortSignal.timeout(4_000) });
         return res.ok ? good(`Closed tab ${args.tab}.`) : failed(`The browser refused to close ${args.tab} (HTTP ${res.status}).`);
       }
       default:

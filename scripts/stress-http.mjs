@@ -1,7 +1,7 @@
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 
 let failures = 0;
@@ -52,8 +52,15 @@ function partialUpload(port, bytes, declared) {
   });
 }
 
-const port = await freePort();
 const cwd = process.cwd();
+const publicBind = spawnSync(process.execPath, [path.join(cwd, "dist/index.js"), "--http", "--host", "0.0.0.0"], {
+  cwd,
+  encoding: "utf8",
+  timeout: 5000,
+});
+check("unauthenticated HTTP listener refuses non-loopback binds", publicBind.status === 2 && /loopback/i.test(publicBind.stderr), publicBind.stderr.trim());
+
+const port = await freePort();
 const child = spawn(process.execPath, [path.join(cwd, "dist/index.js"), "--http", "--port", String(port)], {
   cwd,
   env: { ...process.env, MCP_HTTP_MAX_INFLIGHT: "4", MCP_MAX_BODY_BYTES: String(8 * 1024 * 1024), MCP_HTTP_BODY_BUDGET_BYTES: String(8 * 1024 * 1024) },

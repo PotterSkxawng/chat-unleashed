@@ -11,6 +11,7 @@ import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { appHome, resolveUserPath } from "./config.js";
 import { run, sh, truncate } from "./exec.js";
+import { safeFileId } from "./store.js";
 
 export interface SymbolHit {
   name: string;
@@ -415,7 +416,7 @@ export async function projectSummary(root?: string): Promise<ProjectSummary> {
       const stat = fs.statSync(full);
       if (stat.size > 2 * 1024 * 1024) continue;
       const text = fs.readFileSync(full, "utf8");
-      todos += (text.match(/(TODO|FIXME|XXX)/g) ?? []).length;
+      todos += (text.match(/\b(TODO|FIXME|XXX)\b/g) ?? []).length;
     } catch {
       // Unreadable files are skipped, not counted.
     }
@@ -733,7 +734,8 @@ function goalsDir(): string {
 
 export function recordGoal(runRecord: GoalRun): void {
   fs.mkdirSync(goalsDir(), { recursive: true });
-  const file = path.join(goalsDir(), `${runRecord.id}.json`);
+  const id = safeFileId(runRecord.id, "goal id");
+  const file = path.join(goalsDir(), `${id}.json`);
   let history: GoalRun[] = [];
   if (fs.existsSync(file)) {
     try {
@@ -747,7 +749,8 @@ export function recordGoal(runRecord: GoalRun): void {
 }
 
 export function goalHistory(id: string): GoalRun[] {
-  const file = path.join(goalsDir(), `${id}.json`);
+  const safeId = safeFileId(id, "goal id");
+  const file = path.join(goalsDir(), `${safeId}.json`);
   if (!fs.existsSync(file)) return [];
   try {
     return JSON.parse(fs.readFileSync(file, "utf8")) as GoalRun[];
@@ -769,6 +772,7 @@ export interface GoalOptions {
  *  measure the whole coding loop is judged by, so it refuses to call a run passed
  *  when any command failed or a resource warning made the numbers unreliable. */
 export async function runGoal(options: GoalOptions): Promise<GoalRun> {
+  const id = safeFileId(options.id ?? `goal-${Date.now().toString(36)}`, "goal id");
   const root = resolveUserPath(options.root ?? process.cwd());
   const resources = await assessResources();
   const outcomes: CommandOutcome[] = [];
@@ -788,7 +792,7 @@ export async function runGoal(options: GoalOptions): Promise<GoalRun> {
     });
   }
   const runRecord: GoalRun = {
-    id: options.id ?? `goal-${Date.now().toString(36)}`,
+    id,
     root,
     goal: options.goal,
     iteration: options.iteration ?? 1,

@@ -13,7 +13,7 @@ import { appHome } from "./config.js";
 import { loadTask } from "./tasks.js";
 import type { CheckSpec } from "./checks.js";
 import type { StepInput, TaskInput } from "./tasks.js";
-import { writeJsonAtomic } from "./store.js";
+import { isSafeFileId, safeFileId, writeJsonAtomic } from "./store.js";
 
 export interface SkillStats {
   runs: number;
@@ -45,7 +45,7 @@ export function skillsDir(): string {
 }
 
 function skillFile(id: string): string {
-  return path.join(skillsDir(), `${id}.json`);
+  return path.join(skillsDir(), `${safeFileId(id, "skill id")}.json`);
 }
 
 interface CachedSkill {
@@ -67,7 +67,7 @@ function readSkillFile(file: string): SkillRecord | undefined {
     const cached = skillCache.get(file);
     if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.skill;
     const skill = JSON.parse(fs.readFileSync(file, "utf8")) as SkillRecord;
-    if (!skill?.id || !skill?.name) return undefined;
+    if (!skill?.id || !skill?.name || !isSafeFileId(skill.id)) return undefined;
     skillCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, skill });
     return skill;
   } catch {
@@ -100,7 +100,7 @@ export function successRate(stats: SkillStats): number {
 export function normalizeSkill(input: Partial<SkillRecord> & { name: string }): SkillRecord {
   const now = new Date().toISOString();
   return {
-    id: input.id ?? `skill_${randomUUID().slice(0, 8)}`,
+    id: safeFileId(input.id ?? `skill_${randomUUID().slice(0, 8)}`, "skill id"),
     name: input.name.trim(),
     description: input.description?.trim() ?? "",
     when: (input.when ?? []).map((phrase) => phrase.trim().toLowerCase()).filter(Boolean),
@@ -126,8 +126,10 @@ export function saveSkill(input: Partial<SkillRecord> & { name: string }): Skill
 }
 
 export function loadSkill(idOrName: string): SkillRecord | undefined {
-  const direct = path.join(skillsDir(), `${idOrName}.json`);
-  if (fs.existsSync(direct)) return readSkillFile(direct);
+  if (isSafeFileId(idOrName)) {
+    const direct = skillFile(idOrName);
+    if (fs.existsSync(direct)) return readSkillFile(direct);
+  }
   const wanted = idOrName.toLowerCase();
   return listSkills().find((skill) => skill.name.toLowerCase() === wanted);
 }

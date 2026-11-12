@@ -330,7 +330,51 @@ export function createServer(): McpServer {
     },
   );
 
-  server.registerTool(
+  // Direct MCP registrations also need an in-process handler so durable tasks,
+  // verification checks and skill recording see the same tool surface as MCP.
+  // Keep the SDK's overloaded registerTool type at call sites so Zod continues
+  // to infer each callback's argument shape.
+  const registerDirectTool = ((
+    name: string,
+    config: any,
+    body: (args: any, ...rest: any[]) => Promise<ToolResult>,
+  ) => {
+    const invoke = async (args: any, ...rest: any[]): Promise<ToolResult> => {
+      noteToolCall(name, (args ?? {}) as Record<string, unknown>);
+      return await body(args, ...rest);
+    };
+
+    (server.registerTool as unknown as (
+      toolName: string,
+      toolConfig: unknown,
+      handler: (args: any, ...rest: any[]) => Promise<ToolResult>,
+    ) => void)(name, config, invoke);
+
+    registerHandler(
+      name,
+      async (args) => {
+        const result = await invoke(args);
+        const message =
+          result.content
+            .filter((block): block is TextBlock => block.type === "text")
+            .map((block) => block.text)
+            .join("\n") || (result.isError ? "Tool failed." : "Tool completed.");
+        const image = result.content.find((block): block is ImageBlock => block.type === "image");
+        return {
+          ok: result.isError !== true,
+          message,
+          ...(image ? { image: { data: image.data, mimeType: image.mimeType } } : {}),
+        };
+      },
+      typeof config?.description === "string" ? config.description : "",
+      {
+        readOnly: config?.annotations?.readOnlyHint === true,
+        destructive: config?.annotations?.destructiveHint === true,
+      },
+    );
+  }) as McpServer["registerTool"];
+
+  registerDirectTool(
     "run_command",
     {
       title: "Run shell command",
@@ -415,7 +459,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "write_file",
     {
       title: "Write file",
@@ -433,16 +477,24 @@ export function createServer(): McpServer {
     async ({ path: filePath, content, overwrite }) =>
       audited("write_file", { path: filePath, overwrite, bytes: content.length }, async () => {
         const full = resolvePath(filePath);
-        if (fs.existsSync(full) && !overwrite) {
-          return text(`ERROR: ${full} already exists. Pass overwrite=true to replace it.`, true);
-        }
         await fsp.mkdir(path.dirname(full), { recursive: true });
-        await fsp.writeFile(full, content, "utf8");
+        let handle: fsp.FileHandle | undefined;
+        try {
+          handle = await fsp.open(full, overwrite ? "w" : "wx");
+          await handle.writeFile(content, "utf8");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST" && !overwrite) {
+            return text(`ERROR: ${full} already exists. Pass overwrite=true to replace it.`, true);
+          }
+          throw error;
+        } finally {
+          await handle?.close();
+        }
         return text(`Wrote ${Buffer.byteLength(content, "utf8")} bytes to ${full}`);
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "download_file",
     {
       title: "Download file",
@@ -489,7 +541,7 @@ export function createServer(): McpServer {
           return text(`ERROR: remote file is ${formatBytes(declared)}, over the ${formatBytes(MAX_DOWNLOAD)} limit`, true);
         }
 
-        const tmp = `${dest}.part`;
+        const tmp = `${dest}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         let written = 0;
         try {
           const source = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
@@ -500,8 +552,21 @@ export function createServer(): McpServer {
               yield chunk;
             }
           };
-          await pipeline(source, counter, fs.createWriteStream(tmp));
-          await fsp.rename(tmp, dest);
+          await pipeline(source, counter, fs.createWriteStream(tmp, { flags: "wx" }));
+          if (overwrite) {
+            await fsp.rename(tmp, dest);
+          } else {
+            try {
+              await fsp.link(tmp, dest);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+                return text(`ERROR: ${dest} already exists. Pass overwrite=true or a different destPath.`, true);
+              }
+              throw error;
+            } finally {
+              await fsp.rm(tmp, { force: true });
+            }
+          }
         } catch (err) {
           await fsp.rm(tmp, { force: true });
           return text(`ERROR: download failed: ${(err as Error).message}`, true);
@@ -516,7 +581,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "search_files",
     {
       title: "Search files",
@@ -650,7 +715,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "read_file",
     {
       title: "Read file",
@@ -724,7 +789,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "list_directory",
     {
       title: "List directory",
@@ -852,7 +917,7 @@ export function createServer(): McpServer {
         "and must come last, because Pages cannot insert an inline table mid-flow.",
     );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_status",
     {
       title: "Pages status",
@@ -875,7 +940,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_create",
     {
       title: "Create Pages document",
@@ -935,7 +1000,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_read",
     {
       title: "Read Pages document",
@@ -962,7 +1027,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_inspect",
     {
       title: "Inspect Pages formatting",
@@ -984,7 +1049,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_verify",
     {
       title: "Verify Pages document",
@@ -1017,7 +1082,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_styles",
     {
       title: "Pages default styles",
@@ -1056,7 +1121,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_replace",
     {
       title: "Replace text in Pages",
@@ -1091,7 +1156,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_edit",
     {
       title: "Edit Pages text",
@@ -1211,7 +1276,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_format",
     {
       title: "Format Pages text",
@@ -1257,7 +1322,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_table",
     {
       title: "Edit Pages table",
@@ -1343,7 +1408,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_export",
     {
       title: "Export Pages document",
@@ -1365,7 +1430,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_find",
     {
       title: "Find text in Pages",
@@ -1388,7 +1453,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_stats",
     {
       title: "Pages document stats",
@@ -1408,7 +1473,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_insert_image",
     {
       title: "Insert image into Pages",
@@ -1434,7 +1499,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_insert_textbox",
     {
       title: "Insert text box into Pages",
@@ -1462,7 +1527,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_objects",
     {
       title: "List or delete Pages objects",
@@ -1485,7 +1550,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_duplicate",
     {
       title: "Duplicate Pages document",
@@ -1507,7 +1572,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_layout",
     {
       title: "Pages layout controls",
@@ -1572,7 +1637,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_text_layout",
     {
       title: "Pages text layout inspector",
@@ -1602,7 +1667,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_document_layout",
     {
       title: "Pages document layout inspector",
@@ -1634,7 +1699,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "pages_section_layout",
     {
       title: "Pages section layout and numbering",
@@ -1660,7 +1725,7 @@ export function createServer(): McpServer {
 
   // --- cross-app iWork -------------------------------------------------------
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_ui_control",
     {
       title: "Semantic iWork inspector control",
@@ -1716,7 +1781,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_arrange",
     {
       title: "Arrange selected iWork objects",
@@ -1735,7 +1800,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_items",
     {
       title: "Native iWork items",
@@ -1771,7 +1836,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_apps",
     {
       title: "iWork apps and open documents",
@@ -1791,7 +1856,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_document",
     {
       title: "iWork document overview",
@@ -1812,7 +1877,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_shapes",
     {
       title: "iWork shapes",
@@ -1850,7 +1915,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_export",
     {
       title: "Export any iWork document",
@@ -1875,7 +1940,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "iwork_script",
     {
       title: "Run AppleScript against an iWork app",
@@ -1901,7 +1966,7 @@ export function createServer(): McpServer {
 
   // --- Numbers ---------------------------------------------------------------
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_sheets",
     {
       title: "Numbers sheets",
@@ -1923,7 +1988,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_tables",
     {
       title: "Numbers tables",
@@ -1998,7 +2063,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_cells",
     {
       title: "Numbers cells",
@@ -2027,7 +2092,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_create",
     {
       title: "Create a native Numbers spreadsheet",
@@ -2060,7 +2125,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_inspect",
     {
       title: "Inspect Numbers structure and formatting",
@@ -2078,7 +2143,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_verify",
     {
       title: "Verify Numbers spreadsheet integrity",
@@ -2099,7 +2164,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_find",
     {
       title: "Find values or formulas in Numbers",
@@ -2119,7 +2184,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "numbers_stats",
     {
       title: "Numbers document statistics",
@@ -2136,7 +2201,7 @@ export function createServer(): McpServer {
 
   // --- Keynote ---------------------------------------------------------------
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_slides",
     {
       title: "Keynote slides",
@@ -2161,7 +2226,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_content",
     {
       title: "Keynote slide content",
@@ -2195,7 +2260,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_notes",
     {
       title: "Keynote presenter notes",
@@ -2215,7 +2280,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_document",
     {
       title: "Keynote document settings",
@@ -2241,7 +2306,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_slide_format",
     {
       title: "Keynote slide layout and visibility",
@@ -2264,7 +2329,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_transition",
     {
       title: "Keynote slide transitions",
@@ -2287,7 +2352,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_create",
     {
       title: "Create a native Keynote presentation",
@@ -2348,7 +2413,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_inspect",
     {
       title: "Inspect Keynote slides and object geometry",
@@ -2366,7 +2431,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_verify",
     {
       title: "Verify Keynote presentation integrity",
@@ -2387,7 +2452,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_find",
     {
       title: "Find text in Keynote",
@@ -2406,7 +2471,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_stats",
     {
       title: "Keynote presentation statistics",
@@ -2421,7 +2486,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_charts",
     {
       title: "Keynote charts",
@@ -2453,7 +2518,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_image_slides",
     {
       title: "Create Keynote image slides",
@@ -2473,7 +2538,7 @@ export function createServer(): McpServer {
     }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "keynote_show",
     {
       title: "Control a Keynote slideshow",
@@ -2496,7 +2561,7 @@ export function createServer(): McpServer {
 
   // --- general macOS automation ----------------------------------------------
 
-  server.registerTool(
+  registerDirectTool(
     "mac_apps",
     {
       title: "macOS apps",
@@ -2517,7 +2582,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "mac_ui",
     {
       title: "macOS UI scripting",
@@ -2548,7 +2613,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "mac_system",
     {
       title: "macOS system state",
@@ -2586,7 +2651,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "mac_finder",
     {
       title: "Finder",
@@ -2608,7 +2673,7 @@ export function createServer(): McpServer {
       }),
   );
 
-  server.registerTool(
+  registerDirectTool(
     "mac_shortcuts",
     {
       title: "macOS Shortcuts",
@@ -2657,7 +2722,7 @@ export function createServer(): McpServer {
 
   for (const def of CUA_TOOLS) {
     if (def.name === "js") {
-      server.registerTool(
+      registerDirectTool(
         def.name,
         {
           ...cuaBase(def),
@@ -2680,7 +2745,7 @@ export function createServer(): McpServer {
         async (args) => runCua(def, args),
       );
     } else if (def.name === "js_add_node_module_dir") {
-      server.registerTool(
+      registerDirectTool(
         def.name,
         {
           ...cuaBase(def),
@@ -2696,13 +2761,13 @@ export function createServer(): McpServer {
     } else if (def.name === "js_reset") {
       // An empty raw shape would make the SDK fall back to a Zod v4 object that drops
       // additionalProperties:false, so pass a real (empty) object schema instead.
-      server.registerTool(
+      registerDirectTool(
         def.name,
         { ...cuaBase(def), inputSchema: z.object({}) },
         async (args) => runCua(def, args),
       );
     } else if (def.name === "turn_ended") {
-      server.registerTool(
+      registerDirectTool(
         def.name,
         {
           ...cuaBase(def),
@@ -2733,7 +2798,14 @@ export function createServer(): McpServer {
     // The orchestrator and the skill runner execute steps by tool name, so
     // every registration also lands in the in-process registry with the same
     // body the MCP client calls.
-    registerHandler(name, body, description);
+    const invoke = async (args: any): Promise<AnyOutcome> => {
+      noteToolCall(name, args ?? {});
+      return await body(args);
+    };
+    registerHandler(name, invoke, description, {
+      readOnly: annotations.readOnlyHint === true,
+      destructive: annotations.destructiveHint === true,
+    });
     // Method call on `server` on purpose: registerTool reads private state off
     // `this`, so it must not be detached into a bare function reference.
     const register = (n: string, config: unknown, cb: (args: any) => Promise<ToolResult>): void =>
@@ -2744,8 +2816,7 @@ export function createServer(): McpServer {
       );
     register(name, { title, description, inputSchema, annotations }, (args: any) =>
       audited(name, args, async () => {
-        noteToolCall(name, args ?? {});
-        const out = await body(args);
+        const out = await invoke(args);
         const content: Array<TextBlock | ImageBlock> = [{ type: "text", text: out.message }];
         if (out.image) content.push({ type: "image", data: out.image.data, mimeType: out.image.mimeType });
         return out.ok ? { content } : { content, isError: true };
