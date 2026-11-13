@@ -176,6 +176,25 @@ check(
 );
 await call(second, "task_close", { id: statefulId, force: true });
 
+const persistentPowerPlan = await call(second, "task_plan", {
+  title: "persistent system actions survive task worker teardown",
+  steps: [
+    { text: "keep the Mac awake briefly", tool: "power", args: { action: "keepAwake", minutes: 1 } },
+    { text: "confirm the persistent action survived", tool: "power", args: { action: "status" } },
+  ],
+});
+const persistentPowerId = /task_[a-f0-9]+/.exec(persistentPowerPlan.text)?.[0] ?? "";
+const persistentPowerFirst = await call(second, "task_run", { id: persistentPowerId, maxSteps: 1 });
+await new Promise((resolve) => setTimeout(resolve, 300));
+const persistentPowerSecond = await call(second, "task_run", { id: persistentPowerId, maxSteps: 1 });
+const persistentPowerCleanup = await call(second, "power", { action: "allowSleep" });
+check(
+  "intentional persistent child survives ordinary task worker teardown",
+  persistentPowerFirst.ok && persistentPowerSecond.ok && /Keep awake: yes/.test(persistentPowerSecond.text) && persistentPowerCleanup.ok,
+  persistentPowerSecond.text.split("\n").slice(0, 5).join(" | "),
+);
+await call(second, "task_close", { id: persistentPowerId, force: true });
+
 const hardTimeoutPlan = await call(second, "task_plan", {
   title: "hard tool deadline kills the worker tree",
   steps: [{

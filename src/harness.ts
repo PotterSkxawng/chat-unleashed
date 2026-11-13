@@ -4,7 +4,7 @@
 // Everything here is read-mostly and uses the cheapest source available
 // (`sysctl`, `ps`, `pmset`, `df`, `ifconfig`) rather than `system_profiler`,
 // which can take seconds on a busy Mac.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -315,14 +315,25 @@ export async function power(args: PowerArgs): Promise<Outcome> {
     const minutes = Math.min(Math.max(1, Math.round(args.minutes ?? 30)), 24 * 60);
     const existing = readCaffeinatePid();
     if (existing) return good(`Already keeping the Mac awake (caffeinate pid ${existing}).`);
-    const child = run("/usr/bin/caffeinate", ["-dimsu", "-t", String(minutes * 60)], { timeoutMs: minutes * 60_000 });
-    // Detach: the promise resolves when caffeinate exits, which is the point.
-    void child;
-    await new Promise((r) => setTimeout(r, 300));
-    const pids = await run("/usr/bin/pgrep", ["-f", "caffeinate -dimsu"], { timeoutMs: 5_000 });
-    const pid = pids.out.trim().split("\n").pop();
-    if (pid) fs.writeFileSync(CAFFEINATE_PID, pid, { mode: 0o600 });
-    return good(`Keeping the Mac awake for ${minutes} minute(s)${pid ? ` (caffeinate pid ${pid})` : ""}.`);
+
+    // keepAwake is intentionally persistent: it must survive the short-lived
+    // task worker that requested it. Give caffeinate its own process group and
+    // record that exact pid instead of discovering a possibly unrelated one.
+    const child = spawn("/usr/bin/caffeinate", ["-dimsu", "-t", String(minutes * 60)], {
+      detached: true,
+      stdio: "ignore",
+    });
+    const started = await new Promise<{ pid?: number; error?: Error }>((resolve) => {
+      child.once("spawn", () => resolve({ pid: child.pid }));
+      child.once("error", (error) => resolve({ error }));
+    });
+    if (started.error || !started.pid) {
+      return failed(`Could not start caffeinate: ${started.error?.message ?? "no pid returned"}`);
+    }
+    child.unref();
+    fs.mkdirSync(path.dirname(CAFFEINATE_PID), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(CAFFEINATE_PID, String(started.pid), { mode: 0o600 });
+    return good(`Keeping the Mac awake for ${minutes} minute(s) (caffeinate pid ${started.pid}).`);
   }
   if (args.action === "allowSleep") {
     const pid = readCaffeinatePid();
