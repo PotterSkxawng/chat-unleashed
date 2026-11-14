@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/PotterSkxawng/chat-unleashed/actions/workflows/ci.yml/badge.svg)](https://github.com/PotterSkxawng/chat-unleashed/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/PotterSkxawng/chat-unleashed)](LICENSE)
-[![Release: Public Beta 1](https://img.shields.io/badge/release-Public%20Beta%201-0A84FF)](https://github.com/PotterSkxawng/chat-unleashed/releases/tag/preview-public-beta1)
+[![Release: Public Beta 2](https://img.shields.io/badge/release-Public%20Beta%202-0A84FF)](https://github.com/PotterSkxawng/chat-unleashed/releases/tag/preview-public-beta2)
 ![Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)
-![MCP tools](https://img.shields.io/badge/MCP%20tools-114-0A84FF)
+![MCP tools](https://img.shields.io/badge/MCP%20tools-90-0A84FF)
 
 **Give ChatGPT local access to your Apple Silicon Mac through MCP.**
 
@@ -79,20 +79,20 @@ For the full walkthrough, see [Connecting ChatGPT](docs/CONNECT_CHATGPT.md).
 | Coding | Git operations, project context, code indexing, reviews, benchmarks and repository workflows |
 | Durable work | Plans, saved task state, verification, resumable steps and reusable local skills |
 
-Chat Unleashed currently exposes **114 MCP tools**. See the [full tool reference](docs/TOOLS.md) for the detailed catalog.
+Chat Unleashed exposes **90 MCP tools** directly. All 114 Public Beta 1 capabilities remain available: 26 long-tail iWork operations are deferred behind `capability_search` and `capability_call`, so ChatGPT loads a smaller catalog without losing specialist functionality. See the [full tool reference](docs/TOOLS.md) for the detailed catalog.
 
 ## The CLI
 
 The `chat-unleashed` command is the human-facing control surface.
 
 ```text
-CHAT UNLEASHED  [ Preview (Public Beta 1) ]  ChatGPT access to your Mac
+CHAT UNLEASHED  [ Preview (Public Beta 2) ]  ChatGPT access to your Mac
 
-● Ready · 114 tools available to ChatGPT
+● Ready · 90 tools available to ChatGPT
 
 System         macOS · Apple Silicon · Node.js                         ✔
 Secure Tunnel  Connected                                               ✔
-MCP Server     114 tools online                                        ✔
+MCP Server     90 tools online                                        ✔
 
 Next: chat-unleashed connect
 ```

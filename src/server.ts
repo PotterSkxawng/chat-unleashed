@@ -40,7 +40,7 @@ import { readTextLines } from "./large-text.js";
 import { audio, media, networkInfo, power, processControl, processList, speak, systemInfo } from "./harness.js";
 import { diagnose, openPane, requestPermissions, type PermKind } from "./permissions.js";
 import { browser, calendar, contacts, notes, reminders } from "./pim.js";
-import { noteToolCall, registerHandler } from "./registry.js";
+import { handlerFor, noteToolCall, registerHandler } from "./registry.js";
 import {
   acceptanceBlockers,
   appendLog,
@@ -143,6 +143,42 @@ const SEARCH_TIME_BUDGET_MS = 20_000;
 const SEARCH_MAX_RESULTS_CAP = 500;
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "heic"]);
+
+const MCP_DEFERRED_TOOLS = new Set([
+  'pages_inspect',
+  'pages_verify',
+  'pages_styles',
+  'pages_find',
+  'pages_stats',
+  'pages_objects',
+  'pages_duplicate',
+  'pages_text_layout',
+  'pages_document_layout',
+  'pages_section_layout',
+  'iwork_ui_control',
+  'iwork_arrange',
+  'iwork_apps',
+  'iwork_document',
+  'iwork_shapes',
+  'iwork_script',
+  'numbers_inspect',
+  'numbers_verify',
+  'numbers_find',
+  'numbers_stats',
+  'keynote_notes',
+  'keynote_inspect',
+  'keynote_verify',
+  'keynote_find',
+  'keynote_stats',
+  'keynote_image_slides',
+]);
+
+interface DeferredCapability {
+  title: string;
+  description: string;
+  inputSchema: unknown;
+  annotations: Record<string, boolean>;
+}
 
 // GUI-launched MCP clients often inherit a smaller PATH than an interactive
 // shell. Add only directories that exist, including the active Node runtime,
@@ -319,6 +355,8 @@ export function createServer(): McpServer {
         "For HTTP 503 follow Retry-After or reduce concurrent work; for 413 reduce request size. " +
         "The optional Computer Use compatibility bridge uses the installed unified-computer-use plugin when present. " +
         "Native UI, mouse, keyboard and screen tools do not require that plugin. " +
+        "Public Beta 2 exposes a smaller direct MCP catalog while preserving every Public Beta 1 capability. " +
+        "Use capability_search when a specialist long-tail operation is not exposed directly, then capability_call with the exact returned name and arguments. " +
         "Pages documents are handled natively by the pages_* tools (Apple Events into the real Pages app, " +
         "no Word or docx step): pages_create writes a .pages file from blocks, pages_read returns text plus a " +
         "size/font outline and any tables, pages_inspect reports how everything is formatted, pages_replace " +
@@ -329,6 +367,32 @@ export function createServer(): McpServer {
         "If a pages_* call reports a permission error, run pages_status for the exact System Settings path.",
     },
   );
+
+  const deferredCatalog = new Map<string, DeferredCapability>();
+
+  const schemaObject = (inputSchema: unknown): z.ZodObject<any> => {
+    if (inputSchema instanceof z.ZodObject) return inputSchema;
+    return z.object((inputSchema ?? {}) as Record<string, z.ZodTypeAny>);
+  };
+
+  const jsonSchemaFor = (inputSchema: unknown): unknown => {
+    try {
+      return z.toJSONSchema(schemaObject(inputSchema));
+    } catch {
+      return {};
+    }
+  };
+
+  const rememberDeferred = (
+    name: string,
+    title: string,
+    description: string,
+    inputSchema: unknown,
+    annotations: Record<string, boolean>,
+  ): void => {
+    if (!MCP_DEFERRED_TOOLS.has(name)) return;
+    deferredCatalog.set(name, { title, description, inputSchema, annotations });
+  };
 
   // Direct MCP registrations also need an in-process handler so durable tasks,
   // verification checks and skill recording see the same tool surface as MCP.
@@ -344,11 +408,13 @@ export function createServer(): McpServer {
       return await body(args, ...rest);
     };
 
-    (server.registerTool as unknown as (
-      toolName: string,
-      toolConfig: unknown,
-      handler: (args: any, ...rest: any[]) => Promise<ToolResult>,
-    ) => void)(name, config, invoke);
+    if (!MCP_DEFERRED_TOOLS.has(name)) {
+      (server.registerTool as unknown as (
+        toolName: string,
+        toolConfig: unknown,
+        handler: (args: any, ...rest: any[]) => Promise<ToolResult>,
+      ) => void)(name, config, invoke);
+    }
 
     registerHandler(
       name,
@@ -372,7 +438,106 @@ export function createServer(): McpServer {
         destructive: config?.annotations?.destructiveHint === true,
       },
     );
+    rememberDeferred(
+      name,
+      typeof config?.title === "string" ? config.title : name,
+      typeof config?.description === "string" ? config.description : "",
+      config?.inputSchema,
+      config?.annotations ?? {},
+    );
   }) as McpServer["registerTool"];
+
+  registerDirectTool(
+    'capability_search',
+    {
+      title: 'Search deferred capabilities',
+      description:
+        'Search the deferred long-tail capability catalog by intent. Use this when the direct tools do not cover a specialist operation. ' +
+        'Results include the exact capability name, description, risk level and JSON argument schema for capability_call.',
+      inputSchema: {
+        query: z.string().min(1).describe('What specialist capability is needed, in plain language.'),
+        limit: z.number().int().min(1).max(8).optional().describe('Maximum matches to return (default 5).'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ query, limit }) =>
+      audited('capability_search', { query, limit }, async () => {
+        const phrase = query.toLowerCase().trim();
+        const tokens = phrase.match(/[a-z0-9]+/g) ?? [];
+        const ranked = [...deferredCatalog.entries()]
+          .map(([name, entry]) => {
+            const loweredName = name.toLowerCase();
+            const loweredTitle = entry.title.toLowerCase();
+            const loweredDescription = entry.description.toLowerCase();
+            let score = loweredName === phrase ? 100 : loweredName.includes(phrase) ? 40 : 0;
+            for (const token of tokens) {
+              if (loweredName.includes(token)) score += 12;
+              if (loweredTitle.includes(token)) score += 8;
+              if (loweredDescription.includes(token)) score += 3;
+            }
+            return { name, entry, score };
+          })
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+          .slice(0, limit ?? 5);
+
+        if (!ranked.length) {
+          return text(
+            'No deferred capability matched that query. A direct tool may already cover it; otherwise try a broader capability_search query.',
+          );
+        }
+
+        return text(
+          ranked
+            .map(({ name, entry }, index) => {
+              const risk = entry.annotations.destructiveHint
+                ? 'may change or remove state'
+                : entry.annotations.readOnlyHint
+                  ? 'read-only'
+                  : 'may change state';
+              return [
+                `${index + 1}. ${name} - ${entry.title}`,
+                entry.description,
+                `risk: ${risk}`,
+                `arguments schema: ${JSON.stringify(jsonSchemaFor(entry.inputSchema))}`,
+              ].join('\n');
+            })
+            .join('\n\n'),
+        );
+      }),
+  );
+
+  registerDirectTool(
+    'capability_call',
+    {
+      title: 'Call a deferred capability',
+      description:
+        'Invoke one exact capability returned by capability_search. This preserves the full Public Beta 1 specialist capability set ' +
+        'without loading every long-tail schema into ChatGPT up front. Direct public tools must still be called directly.',
+      inputSchema: {
+        name: z.string().min(1).describe('Exact deferred capability name returned by capability_search.'),
+        arguments: z.record(z.string(), z.unknown()).optional().describe('Arguments matching the schema returned by capability_search.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ name, arguments: capabilityArgs }) =>
+      audited('capability_call', { name, arguments: capabilityArgs }, async () => {
+        const entry = deferredCatalog.get(name);
+        if (!entry) return text(`ERROR: ${name} is not a deferred capability. Use capability_search first.`, true);
+        const handler = handlerFor(name);
+        if (!handler) return text(`ERROR: deferred capability ${name} is not registered.`, true);
+
+        const parsed = schemaObject(entry.inputSchema).safeParse(capabilityArgs ?? {});
+        if (!parsed.success) {
+          return text(`ERROR: invalid arguments for ${name}: ${z.prettifyError(parsed.error)}`, true);
+        }
+
+        const out = await handler(parsed.data);
+        const content: Array<TextBlock | ImageBlock> = [{ type: 'text', text: out.message }];
+        if (out.image) content.push({ type: 'image', data: out.image.data, mimeType: out.image.mimeType });
+        return out.ok ? { content } : { content, isError: true };
+      }),
+  );
 
   registerDirectTool(
     "run_command",
@@ -2813,6 +2978,7 @@ export function createServer(): McpServer {
       readOnly: annotations.readOnlyHint === true,
       destructive: annotations.destructiveHint === true,
     });
+    rememberDeferred(name, title, description, inputSchema, annotations);
     // Method call on `server` on purpose: registerTool reads private state off
     // `this`, so it must not be detached into a bare function reference.
     const register = (n: string, config: unknown, cb: (args: any) => Promise<ToolResult>): void =>
@@ -2821,14 +2987,16 @@ export function createServer(): McpServer {
         config,
         cb,
       );
-    register(name, { title, description, inputSchema, annotations }, (args: any) =>
-      audited(name, args, async () => {
-        const out = await invoke(args);
-        const content: Array<TextBlock | ImageBlock> = [{ type: "text", text: out.message }];
-        if (out.image) content.push({ type: "image", data: out.image.data, mimeType: out.image.mimeType });
-        return out.ok ? { content } : { content, isError: true };
-      }),
-    );
+    if (!MCP_DEFERRED_TOOLS.has(name)) {
+      register(name, { title, description, inputSchema, annotations }, (args: any) =>
+        audited(name, args, async () => {
+          const out = await invoke(args);
+          const content: Array<TextBlock | ImageBlock> = [{ type: "text", text: out.message }];
+          if (out.image) content.push({ type: "image", data: out.image.data, mimeType: out.image.mimeType });
+          return out.ok ? { content } : { content, isError: true };
+        }),
+      );
+    }
   };
 
   addTool(

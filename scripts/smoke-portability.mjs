@@ -43,7 +43,7 @@ try {
   await client.connect(transport);
   const tools = await client.listTools();
   const names = new Set(tools.tools.map((tool) => tool.name));
-  check("portable server exposes the core tool surface", tools.tools.length >= 100 && names.has("run_command") && names.has("pages_inspect"));
+  check("portable server exposes the core tool surface", tools.tools.length === 90 && names.has("run_command") && names.has("capability_search") && names.has("capability_call") && !names.has("pages_inspect"));
 
   const configPath = await call("app_config", { action: "path" });
   check(
@@ -66,8 +66,8 @@ try {
   check("network discovery runs without assuming en0", network.ok && /Gateway:|Interfaces:/.test(network.text));
 
   // App discovery should not block on Automation permission or open documents.
-  const iwork = await call("iwork_apps", { includeDocuments: false });
-  check("iWork discovery returns a structured status without fixed install paths", iwork.ok && /iWork apps/.test(iwork.text));
+  const iwork = await call("capability_call", { name: "iwork_apps", arguments: { includeDocuments: false } });
+  check("deferred iWork discovery returns a structured status without fixed install paths", iwork.ok && /iWork apps/.test(iwork.text));
 
   const audit = path.join(state, "logs", "audit.log");
   check("audit log is stored in per-user app state", fs.existsSync(audit), audit);

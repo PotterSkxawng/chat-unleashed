@@ -1,6 +1,6 @@
 {
   "name": "chat-unleashed",
-  "version": "0.2.0-public-beta.1",
+  "version": "0.2.0-public-beta.2",
   "private": true,
   "description": "Chat Unleashed: a local MCP server that lets ChatGPT Chat act on an Apple Silicon Mac, with shell, files, native macOS UI, browser control, durable tasks and deep iWork automation.",
   "type": "module",
@@ -31,7 +31,7 @@
     "build:stress-fixtures": "esbuild src/store.ts src/large-text.ts src/exec.ts src/coding.ts src/tasks.ts src/capacity.ts src/skills.ts --bundle --platform=node --format=esm --target=node20 --outdir=.stress --log-level=warning",
     "stress:files": "node scripts/stress-files.mjs",
     "stress:all": "npm run stress:scale --silent && npm run stress:http --silent && npm run stress:files --silent",
-    "validate:release": "npm run clean:fixtures --silent && npm run build --silent && npm run check:public --silent && npm run check:history --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run clean:fixtures --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent && npm run test:cli --silent && npm run test:audit --silent",
+    "validate:release": "npm run clean:fixtures --silent && npm run build --silent && npm run check:public --silent && npm run check:history --silent && npm run test:surface --silent && npm run smoke:all --silent && npm run stress:all --silent && npm run clean:fixtures --silent && npm run check:public --silent && npm run check:pack --silent && npm run test:updater --silent && npm run test:cli --silent && npm run test:audit --silent",
     "install:local": "npm run build && npm run deploy:local",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate:release",
@@ -47,7 +47,8 @@
     "clean:fixtures": "node -e \"for (const p of ['.test','.stress']) require('fs').rmSync(p,{recursive:true,force:true})\"",
     "test:cli": "node scripts/test-cli.mjs",
     "test:audit": "node scripts/test-audit.mjs",
-    "check:history": "node scripts/check-history.mjs"
+    "check:history": "node scripts/check-history.mjs",
+    "test:surface": "node scripts/test-tool-surface.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

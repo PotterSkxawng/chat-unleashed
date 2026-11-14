@@ -1,11 +1,19 @@
 # Tool reference
 
-Chat Unleashed currently exposes 114 MCP tools. This file is the compact catalog; focused references cover behavior that needs more detail.
+Chat Unleashed exposes 90 MCP tools directly in Public Beta 2 while preserving all 114 Public Beta 1 capabilities. Twenty-six long-tail iWork capabilities are deferred behind the capability bridge, so their schemas are loaded only when needed. This file is the compact catalog; focused references cover behavior that needs more detail.
+
+## Deferred capability bridge
+
+`capability_search` searches the deferred specialist catalog by intent and returns the exact capability name, description, risk level and JSON argument schema. `capability_call` invokes that exact hidden handler. The underlying implementations are unchanged and remain directly addressable by durable tasks and skills.
+
+Deferred in Public Beta 2: `pages_inspect`, `pages_verify`, `pages_styles`, `pages_find`, `pages_stats`, `pages_objects`, `pages_duplicate`, `pages_text_layout`, `pages_document_layout`, `pages_section_layout`, `iwork_ui_control`, `iwork_arrange`, `iwork_apps`, `iwork_document`, `iwork_shapes`, `iwork_script`, `numbers_inspect`, `numbers_verify`, `numbers_find`, `numbers_stats`, `keynote_notes`, `keynote_inspect`, `keynote_verify`, `keynote_find`, `keynote_stats`, and `keynote_image_slides`.
 
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
+| `capability_search` | Finds deferred specialist capabilities by plain-language intent and returns their exact argument schema. |
+| `capability_call` | Calls one exact capability returned by `capability_search`; public tools remain directly callable. |
 | `run_command` | Full terminal access. Runs any shell command with `cwd`, `timeoutSeconds` (default 60, max 600), optional `env`. Returns stdout, stderr, exit code (capped at 200 KB/stream). |
 | `download_file` | Fetches an http(s) URL to disk (default `~/Downloads/<filename>`), follows redirects, 2 GiB cap, no silent overwrite. |
 | `search_files` | Finds files by name (substring or `*` glob) and/or by content, skipping `node_modules`, `.git`, caches and `~/Library`. 20 s budget, partial results allowed. |
